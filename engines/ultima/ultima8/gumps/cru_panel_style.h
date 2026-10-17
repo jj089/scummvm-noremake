@@ -53,6 +53,7 @@ static const uint32 COL_FRAME_DIM = TEX32_PACK_RGB(90, 14, 14);
 static const uint32 COL_ROW = TEX32_PACK_RGBA(40, 160, 40, 70);
 static const uint32 COL_ROW_LINE = TEX32_PACK_RGB(20, 70, 20);
 static const uint32 COL_DIM = TEX32_PACK_RGBA(6, 10, 22, 150);
+static const uint32 COL_TITLE = TEX32_PACK_RGBA(235, 45, 20, 190);
 
 inline void drawText(RenderSurface *surf, int fontnum, const Common::String &text, int x, int y,
 					 int width = 0, Font::TextAlign align = Font::TEXT_LEFT, uint32 blend = 0) {
@@ -74,7 +75,9 @@ inline void drawPanel(RenderSurface *surf, const Common::String &title) {
 	surf->fillBlended(COL_PANEL, panel);
 	surf->frameRect32(COL_FRAME, panel);
 	surf->frameRect32(COL_FRAME_DIM, Common::Rect32(3, 3, PANEL_W - 3, PANEL_H - 3));
-	drawText(surf, FONT_TITLE, title, MARGIN, 18);
+	// Tinted: the title font's yellow edge pixels look like a green fringe
+	// once upscaled.
+	drawText(surf, FONT_TITLE, title, MARGIN, 18, 0, Font::TEXT_LEFT, COL_TITLE);
 	surf->drawLine32(COL_FRAME_DIM, MARGIN, LIST_Y - 8, PANEL_W - MARGIN, LIST_Y - 8);
 }
 
