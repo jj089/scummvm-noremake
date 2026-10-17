@@ -886,6 +886,12 @@ void Ultima8Engine::handleEvent(const Common::Event &event) {
 	case Common::EVENT_MOUSEMOVE:
 		_mouse->setMouseCoords(event.mouse.x, event.mouse.y);
 		break;
+	case Common::EVENT_JOYAXIS_MOTION: {
+		CruAvatarMoverProcess *cruMover = dynamic_cast<CruAvatarMoverProcess *>(_avatarMoverProcess);
+		if (cruMover)
+			cruMover->onJoystickAxis(event.joystick.axis, event.joystick.position);
+		break;
+	}
 
 	case Common::EVENT_LBUTTONDOWN:
 	case Common::EVENT_MBUTTONDOWN:

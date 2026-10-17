@@ -37,6 +37,7 @@ namespace Ultima8 {
  *   click <x> <y>             - left click at game screen coordinates
  *   mousemove <x> <y>         - move the mouse to game screen coordinates
  *   mousedown | mouseup       - press or release the left button where the mouse is
+ *   rstick <x> <y>            - set the right analog stick position
  *   log [label]               - write avatar state to the debug log
  *   logevery <ms>             - also log avatar state periodically (0 = off)
  *   shot <path>               - save the current screen as PNG

@@ -127,21 +127,25 @@ static const KeybindingRecord DEBUG_KEYS[] = {
 
 // With fluid movement, Crusader uses a modern layout: WASD and the arrow keys
 // move in screen directions, and the actions that used W and S move to Q and F.
+// On a controller: left stick/d-pad moves, right stick aims, right trigger
+// fires and left trigger walks.
 static const struct {
 	const char *_id;
-	const char *_inputs[3];
+	const char *_inputs[4];
 } CRUSADER_FLUID_KEYS[] = {
-	{ "TURN_LEFT", { "KP4", nullptr, nullptr } },
-	{ "TURN_RIGHT", { "KP6", nullptr, nullptr } },
-	{ "MOVE_FORWARD", { "KP8", nullptr, nullptr } },
-	{ "MOVE_BACK", { nullptr, nullptr, nullptr } },
-	{ "MOVE_UP", { "w", "UP", "JOY_UP" } },
-	{ "MOVE_DOWN", { "s", "DOWN", "JOY_DOWN" } },
-	{ "MOVE_LEFT", { "a", "LEFT", "JOY_LEFT" } },
-	{ "MOVE_RIGHT", { "d", "RIGHT", "JOY_RIGHT" } },
-	{ "NEXT_WEAPON", { "q", "KP_MULTIPLY", nullptr } },
-	{ "SELECT_ITEM", { "f", "KP_PLUS", nullptr } },
-	{ nullptr, { nullptr, nullptr, nullptr } }
+	{ "TURN_LEFT", { "KP4", nullptr, nullptr, nullptr } },
+	{ "TURN_RIGHT", { "KP6", nullptr, nullptr, nullptr } },
+	{ "MOVE_FORWARD", { "KP8", nullptr, nullptr, nullptr } },
+	{ "MOVE_BACK", { nullptr, nullptr, nullptr, nullptr } },
+	{ "MOVE_UP", { "w", "UP", "JOY_UP", "JOY_LEFT_STICK_Y-" } },
+	{ "MOVE_DOWN", { "s", "DOWN", "JOY_DOWN", "JOY_LEFT_STICK_Y+" } },
+	{ "MOVE_LEFT", { "a", "LEFT", "JOY_LEFT", "JOY_LEFT_STICK_X-" } },
+	{ "MOVE_RIGHT", { "d", "RIGHT", "JOY_RIGHT", "JOY_LEFT_STICK_X+" } },
+	{ "MOVE_RUN", { "LSHIFT", "JOY_LEFT_TRIGGER", nullptr, nullptr } },
+	{ "ATTACK", { "SPACE", "KP0", "JOY_RIGHT_TRIGGER", nullptr } },
+	{ "NEXT_WEAPON", { "q", "KP_MULTIPLY", nullptr, nullptr } },
+	{ "SELECT_ITEM", { "f", "KP_PLUS", nullptr, nullptr } },
+	{ nullptr, { nullptr, nullptr, nullptr, nullptr } }
 };
 
 static void addDefaultInputs(Common::Action *act, const KeybindingRecord *r, bool fluid) {

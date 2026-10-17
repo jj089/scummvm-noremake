@@ -53,6 +53,9 @@ public:
 
 	void clearMovementFlag(uint32 mask) override;
 
+	//! Analog stick input, used to aim with the right stick in fluid movement.
+	void onJoystickAxis(int axis, int position);
+
 private:
 	/** Try readying or firing weapon. */
 	void tryAttack();
@@ -110,6 +113,8 @@ private:
 	//! Mouse aiming is active once the mouse moves; keyboard turning disables it.
 	bool _mouseAimActive;
 	int32 _lastMouseX, _lastMouseY;
+	//! Right stick position (-32768..32767)
+	int32 _aimStickX, _aimStickY;
 	Animation::Sequence _fluidAnim;
 	unsigned int _fluidFrame;
 	//! Distance travelled since the last locomotion frame change (world units * 256)

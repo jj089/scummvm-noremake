@@ -50,7 +50,7 @@ static const int REBEL_BASE_MAP = 40;
 CruAvatarMoverProcess::CruAvatarMoverProcess() : AvatarMoverProcess(),
 _avatarAngle(-1), _SGA1Loaded(false), _nextFireTick(0), _lastNPCAlertTick(0),
 _fluidMoving(false), _fluidAnim(Animation::stand), _fluidFrame(0), _fluidDist(0),
-_mouseAimActive(false), _lastMouseX(-1), _lastMouseY(-1) {
+_mouseAimActive(false), _lastMouseX(-1), _lastMouseY(-1), _aimStickX(0), _aimStickY(0) {
 }
 
 
@@ -831,6 +831,13 @@ bool CruAvatarMoverProcess::fluidTryMove(Actor *avatar, int32 dx, int32 dy, Dire
 	return false;
 }
 
+void CruAvatarMoverProcess::onJoystickAxis(int axis, int position) {
+	if (axis == Common::JOYSTICK_AXIS_RIGHT_STICK_X)
+		_aimStickX = position;
+	else if (axis == Common::JOYSTICK_AXIS_RIGHT_STICK_Y)
+		_aimStickY = position;
+}
+
 bool CruAvatarMoverProcess::getMouseAimDir(const Actor *avatar, Direction &dir) const {
 	GameMapGump *gmg = Ultima8Engine::get_instance()->getGameMapGump();
 	const Mouse *mouse = Mouse::get_instance();
@@ -968,9 +975,21 @@ bool CruAvatarMoverProcess::handleFluidMovement() {
 		_lastMouseY = my;
 	}
 	Direction aimdir = avatar->getDir();
-	const bool haveAim = _mouseAimActive && avatar->isInCombat() &&
-		avatar->getMapNum() != REBEL_BASE_MAP && getMouseAimDir(avatar, aimdir);
-	const bool mouseFire = haveAim && _mouseButton[0].isState(MBS_DOWN);
+	const bool canAim = avatar->getMapNum() != REBEL_BASE_MAP;
+
+	// Right stick aims (and readies the weapon) once pushed past the dead zone.
+	const double stickLen = sqrt((double)_aimStickX * _aimStickX + (double)_aimStickY * _aimStickY);
+	const bool stickAim = canAim && stickLen > 12000;
+	if (stickAim) {
+		_mouseAimActive = false;
+		if (!avatar->isInCombat())
+			avatar->setInCombat(0);
+		aimdir = Direction_GetWorldDir(2 * _aimStickY - _aimStickX, _aimStickX + 2 * _aimStickY, dirmode_16dirs);
+	}
+
+	const bool haveAim = stickAim || (canAim && _mouseAimActive && avatar->isInCombat() &&
+		getMouseAimDir(avatar, aimdir));
+	const bool mouseFire = haveAim && !stickAim && _mouseButton[0].isState(MBS_DOWN);
 
 	int x, y;
 	getMovementFlagAxes(x, y);
@@ -1026,32 +1045,62 @@ bool CruAvatarMoverProcess::handleFluidMovement() {
 		avatar->getMapNum() != REBEL_BASE_MAP;
 	if (firing && !avatar->isInCombat())
 		avatar->setInCombat(0);
-	// While firing with the mouse, face the cursor (strafe); otherwise face
-	// the direction of travel.
-	const Direction facedir = mouseFire ? aimdir : dir;
+	// With an aim (mouse cursor or right stick), face it while moving (strafe);
+	// otherwise face the direction of travel.
+	const Direction facedir = haveAim ? aimdir : dir;
 
-	const Animation::Sequence anim = fluidMoveAnim(avatar);
-	const uint32 actionnum = AnimDat::getActionNumberForSequence(anim, avatar);
-	const AnimAction *action = GameData::get_instance()->getMainShapes()->getAnim(avatar->getShape(), actionnum);
-	if (!action || action->getSize() == 0)
+	// The locomotion animation sets the speed of travel.
+	const Animation::Sequence moveanim = fluidMoveAnim(avatar);
+	const MainShapeArchive *shapes = GameData::get_instance()->getMainShapes();
+	const AnimAction *moveaction = shapes->getAnim(avatar->getShape(),
+		AnimDat::getActionNumberForSequence(moveanim, avatar));
+	if (!moveaction || moveaction->getSize() == 0)
 		return false;
-	const unsigned int nframes = action->getSize();
 
-	if (!_fluidMoving || anim != _fluidAnim) {
-		_fluidAnim = anim;
+	// When strafing, show a side-step or backpedal instead of running in the
+	// facing direction, so the legs match the direction of travel.
+	Animation::Sequence visanim = moveanim;
+	if (facedir != dir && avatar->isInCombat()) {
+		const int rel = ((int)dir - (int)facedir + 16) % 16;
+		Animation::Sequence strafe = moveanim;
+		if (rel >= 3 && rel <= 5)
+			strafe = Animation::slideRight;
+		else if (rel >= 11 && rel <= 13)
+			strafe = Animation::slideLeft;
+		else if (rel >= 6 && rel <= 10)
+			strafe = Animation::retreat;
+		if (strafe != moveanim && avatar->hasAnim(strafe))
+			visanim = strafe;
+	}
+	const AnimAction *visaction = (visanim == moveanim) ? moveaction :
+		shapes->getAnim(avatar->getShape(), AnimDat::getActionNumberForSequence(visanim, avatar));
+	if (!visaction || visaction->getSize() == 0) {
+		visanim = moveanim;
+		visaction = moveaction;
+	}
+	const unsigned int nframes = visaction->getSize();
+
+	if (!_fluidMoving || visanim != _fluidAnim) {
+		_fluidAnim = visanim;
 		_fluidFrame = 0;
 		_fluidDist = 0;
 	}
 
-	// Speed matches the original animation: average distance per animation
-	// frame in this direction, spread over the frame's repeat ticks.
-	int32 deltasum = 0;
-	for (unsigned int i = 0; i < nframes; i++)
-		deltasum += ABS(action->getFrame(dir, i)._deltaDir);
-	const double factorlen = sqrt((double)(Direction_XFactor(dir) * Direction_XFactor(dir) +
-										   Direction_YFactor(dir) * Direction_YFactor(dir)));
-	const double frameLen = MAX(1.0, 4.0 * deltasum * factorlen / nframes);
-	const double speed = frameLen / (action->getFrameRepeat() + 1);
+	// Average distance per animation frame for an action in a direction.
+	auto frameLength = [](const AnimAction *action, Direction d) {
+		int32 deltasum = 0;
+		for (unsigned int i = 0; i < action->getSize(); i++)
+			deltasum += ABS(action->getFrame(d, i)._deltaDir);
+		if (!deltasum)
+			return 32.0;
+		const double factorlen = sqrt((double)(Direction_XFactor(d) * Direction_XFactor(d) +
+											   Direction_YFactor(d) * Direction_YFactor(d)));
+		return MAX(1.0, 4.0 * deltasum * factorlen / action->getSize());
+	};
+
+	// Speed matches the original animation, spread over its frame repeat ticks.
+	const double speed = frameLength(moveaction, dir) / (moveaction->getFrameRepeat() + 1);
+	const double frameLen = frameLength(visaction, facedir);
 
 	const double inputlen = sqrt((double)(wx * wx + wy * wy));
 	const int32 mdx = (int32)round(wx / inputlen * speed);
@@ -1065,21 +1114,21 @@ bool CruAvatarMoverProcess::handleFluidMovement() {
 		while (_fluidDist >= (int32)(frameLen * 256)) {
 			_fluidDist -= (int32)(frameLen * 256);
 			_fluidFrame = (_fluidFrame + 1) % nframes;
-			const AnimFrame &sf = action->getFrame(facedir, _fluidFrame);
+			const AnimFrame &sf = visaction->getFrame(facedir, _fluidFrame);
 			if (sf._sfx) {
 				AudioProcess *audio = AudioProcess::get_instance();
 				if (audio)
 					audio->playSFX(sf._sfx, 0x60, avatar->getObjId(), 0);
 			}
 		}
-		const AnimFrame &f = action->getFrame(facedir, _fluidFrame);
+		const AnimFrame &f = visaction->getFrame(facedir, _fluidFrame);
 		avatar->setFrame(f._frame);
 		if (f.is_cruflipped())
 			avatar->setFlag(Item::FLG_FLIPPED);
 		else
 			avatar->clearFlag(Item::FLG_FLIPPED);
 		avatar->setAnimFrame(_fluidFrame);
-		avatar->setLastAnim(anim);
+		avatar->setLastAnim(visanim);
 		_fluidMoving = true;
 	} else {
 		// Blocked: stand facing the requested direction.

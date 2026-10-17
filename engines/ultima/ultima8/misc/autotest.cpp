@@ -161,6 +161,16 @@ void AutoTest::execute(const Common::String &line) {
 			}
 		}
 		warning("autotest: unknown key %s", name.c_str());
+	} else if (cmd == "rstick") {
+		// Simulate the right analog stick (-32768..32767 per axis).
+		Common::Event ev;
+		ev.type = Common::EVENT_JOYAXIS_MOTION;
+		ev.joystick.axis = Common::JOYSTICK_AXIS_RIGHT_STICK_X;
+		ev.joystick.position = atoi(tok.nextToken().c_str());
+		g_system->getEventManager()->pushEvent(ev);
+		ev.joystick.axis = Common::JOYSTICK_AXIS_RIGHT_STICK_Y;
+		ev.joystick.position = atoi(tok.nextToken().c_str());
+		g_system->getEventManager()->pushEvent(ev);
 	} else if (cmd == "mousedown" || cmd == "mouseup") {
 		Common::Event ev;
 		int32 mx, my;
