@@ -26,6 +26,7 @@
 #include "ultima/ultima8/gfx/texture.h"
 #include "ultima/ultima8/gfx/hd_shape_cache.h"
 #include "ultima/ultima8/games/game_data.h"
+#include "ultima/ultima8/gfx/fonts/font_shape_archive.h"
 #include "ultima/ultima8/gfx/palette_manager.h"
 #include "common/hashmap.h"
 #include "graphics/blit.h"
@@ -795,7 +796,7 @@ static FrameSrc makeFrameSrc(const ShapeFrame *frame, int scale, bool mirrored, 
 template<typename uintX>
 void inline paintHDLogic(uint8 *pixels, int32 pitch, const Common::Rect &clipWindow,
 						 const Graphics::PixelFormat &format, const Graphics::Surface &src,
-						 int32 left, int32 top, bool mirrored, const Palette *pal) {
+						 int32 left, int32 top, bool mirrored, const Palette *pal, uint32 highlight = 0) {
 	Common::Rect dst(left, top, left + src.w, top + src.h);
 	Common::Rect clipped = dst;
 	clipped.clip(clipWindow);
@@ -807,8 +808,12 @@ void inline paintHDLogic(uint8 *pixels, int32 pitch, const Common::Rect &clipWin
 		 pal->_matrix[4] || pal->_matrix[5] != 0x800 || pal->_matrix[6] || pal->_matrix[7] ||
 		 pal->_matrix[8] || pal->_matrix[9] || pal->_matrix[10] != 0x800 || pal->_matrix[11]);
 
+	// Highlight colour (blended text): mixed over the source like paintBlendedLogic.
+	const uint32 ca = TEX32_A(highlight), ica = 255 - ca;
+	const uint32 cr = TEX32_R(highlight) * ca, cg = TEX32_G(highlight) * ca, cb = TEX32_B(highlight) * ca;
+
 	// Fast path: 32-bit destination with 8-bit channels and no palette transform.
-	if (sizeof(uintX) == 4 && !transform && format.rBits() == 8 && format.gBits() == 8 && format.bBits() == 8) {
+	if (sizeof(uintX) == 4 && !transform && !ca && format.rBits() == 8 && format.gBits() == 8 && format.bBits() == 8) {
 		const uint rs = format.rShift, gs = format.gShift, bs = format.bShift;
 		const uint32 amask = format.aBits() ? (0xFFu << format.aShift) : 0;
 		for (int y = clipped.top; y < clipped.bottom; y++) {
@@ -847,6 +852,11 @@ void inline paintHDLogic(uint8 *pixels, int32 pitch, const Common::Rect &clipWin
 			int r = (argb >> 16) & 0xFF, g = (argb >> 8) & 0xFF, b = argb & 0xFF;
 			if (transform)
 				pal->transformRGB(r, g, b);
+			if (ca) {
+				r = (r * ica + cr) >> 8;
+				g = (g * ica + cg) >> 8;
+				b = (b * ica + cb) >> 8;
+			}
 			if (a == 0xFF) {
 				drow[x] = static_cast<uintX>(format.RGBToColor(r, g, b));
 			} else {
@@ -1148,7 +1158,7 @@ void inline paintBlendedLogic(uint8 *pixels, int32 pitch,
 //
 // Desc: Standard shape drawing functions. Clips but doesn't do anything else
 //
-bool RenderSurface::paintHD(const Shape *s, uint32 framenum, int32 x, int32 y, bool mirrored) {
+bool RenderSurface::paintHD(const Shape *s, uint32 framenum, int32 x, int32 y, bool mirrored, uint32 highlight) {
 	if (_scale != HDShapeCache::HD_SCALE)
 		return false;
 	HDShapeCache *cache = HDShapeCache::get_instance();
@@ -1176,10 +1186,14 @@ bool RenderSurface::paintHD(const Shape *s, uint32 framenum, int32 x, int32 y, b
 	uint16 flexId;
 	uint32 shapenum;
 	s->getShapeId(flexId, shapenum);
-	// "Other" shapes (fonts...) share archive id 0 with the mouse cursor art,
-	// which is only used by the cursor code.
-	if (flexId == GameData::OTHER)
-		return false;
+	// "Other" shapes share archive id 0 with the mouse cursor art, which is
+	// only used by the cursor code. Fonts have their own HD set.
+	if (flexId == GameData::OTHER) {
+		FontShapeArchive *fonts = GameData::get_instance()->getFonts();
+		if (!fonts || shapenum >= fonts->getCount() || fonts->getShape(shapenum) != s)
+			return false;
+		flexId = HDShapeCache::FONTS_FLEX;
+	}
 	const Graphics::Surface *hd = cache->getFrame(flexId, shapenum, framenum, palIndex);
 	const ShapeFrame *frame = s->getFrame(framenum);
 	if (!hd || !frame)
@@ -1193,9 +1207,9 @@ bool RenderSurface::paintHD(const Shape *s, uint32 framenum, int32 x, int32 y, b
 	const int32 top = (y - frame->_yoff) * _scale;
 	const int32 left = mirrored ? (x + frame->_xoff + 1) * _scale - hd->w : (x - frame->_xoff) * _scale;
 	if (_surface->format.bytesPerPixel == 4)
-		paintHDLogic<uint32>(_pixels, _pitch, physClip(), _surface->format, *hd, left, top, mirrored, s->getPalette());
+		paintHDLogic<uint32>(_pixels, _pitch, physClip(), _surface->format, *hd, left, top, mirrored, s->getPalette(), highlight);
 	else if (_surface->format.bytesPerPixel == 2)
-		paintHDLogic<uint16>(_pixels, _pitch, physClip(), _surface->format, *hd, left, top, mirrored, s->getPalette());
+		paintHDLogic<uint16>(_pixels, _pitch, physClip(), _surface->format, *hd, left, top, mirrored, s->getPalette(), highlight);
 	else
 		return false;
 	return true;
@@ -1280,6 +1294,9 @@ void RenderSurface::PaintInvisible(const Shape *s, uint32 framenum, int32 x, int
 void RenderSurface::PaintHighlight(const Shape *s, uint32 framenum, int32 x, int32 y, bool trans, bool mirrored, uint32 col32) {
 	const ShapeFrame *frame = s->getFrame(framenum);
 	if (!frame || !s->getPalette())
+		return;
+
+	if (!trans && paintHD(s, framenum, x, y, mirrored, col32))
 		return;
 
 	const FrameSrc fs = makeFrameSrc(frame, _scale, mirrored, x, y);

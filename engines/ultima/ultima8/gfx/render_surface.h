@@ -67,7 +67,7 @@ private:
 	// Scale a region of a blit source by _scale into _scaleTemp
 	const Graphics::ManagedSurface &scaleBlitSource(const Graphics::Surface &src, const Common::Rect &srcRect);
 	// Paint an HD replacement frame if one exists. Returns true if painted.
-	bool paintHD(const Shape *s, uint32 framenum, int32 x, int32 y, bool mirrored);
+	bool paintHD(const Shape *s, uint32 framenum, int32 x, int32 y, bool mirrored, uint32 highlight = 0);
 
 public:
 	// Create a render surface

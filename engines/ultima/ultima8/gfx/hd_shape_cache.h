@@ -48,6 +48,8 @@ namespace Ultima8 {
 class HDShapeCache {
 public:
 	static const int HD_SCALE = 2;
+	// Pseudo archive id for font glyphs (fonts share id 0 with the mouse art).
+	static const uint16 FONTS_FLEX = 3;
 
 	HDShapeCache();
 	~HDShapeCache();
