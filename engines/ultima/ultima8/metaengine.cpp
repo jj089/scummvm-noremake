@@ -23,6 +23,7 @@
 
 #include "backends/keymapper/action.h"
 #include "backends/keymapper/standard-actions.h"
+#include "common/config-manager.h"
 #include "common/savefile.h"
 #include "common/system.h"
 #include "common/translation.h"
@@ -124,8 +125,54 @@ static const KeybindingRecord DEBUG_KEYS[] = {
 };
 #endif
 
-Common::KeymapArray MetaEngine::initKeymaps(const Common::String &gameId) {
+// With fluid movement, Crusader uses a modern layout: WASD and the arrow keys
+// move in screen directions, and the actions that used W and S move to Q and F.
+static const struct {
+	const char *_id;
+	const char *_inputs[3];
+} CRUSADER_FLUID_KEYS[] = {
+	{ "TURN_LEFT", { "KP4", nullptr, nullptr } },
+	{ "TURN_RIGHT", { "KP6", nullptr, nullptr } },
+	{ "MOVE_FORWARD", { "KP8", nullptr, nullptr } },
+	{ "MOVE_BACK", { nullptr, nullptr, nullptr } },
+	{ "MOVE_UP", { "w", "UP", "JOY_UP" } },
+	{ "MOVE_DOWN", { "s", "DOWN", "JOY_DOWN" } },
+	{ "MOVE_LEFT", { "a", "LEFT", "JOY_LEFT" } },
+	{ "MOVE_RIGHT", { "d", "RIGHT", "JOY_RIGHT" } },
+	{ "NEXT_WEAPON", { "q", "KP_MULTIPLY", nullptr } },
+	{ "SELECT_ITEM", { "f", "KP_PLUS", nullptr } },
+	{ nullptr, { nullptr, nullptr, nullptr } }
+};
+
+static void addDefaultInputs(Common::Action *act, const KeybindingRecord *r, bool fluid) {
+	if (fluid) {
+		for (int i = 0; CRUSADER_FLUID_KEYS[i]._id; i++) {
+			if (!strcmp(CRUSADER_FLUID_KEYS[i]._id, r->_id)) {
+				for (const char *input : CRUSADER_FLUID_KEYS[i]._inputs) {
+					if (input)
+						act->addDefaultInputMapping(input);
+				}
+				return;
+			}
+		}
+	}
+	if (r->_input1)
+		act->addDefaultInputMapping(r->_input1);
+	if (r->_input2)
+		act->addDefaultInputMapping(r->_input2);
+}
+
+Common::KeymapArray MetaEngine::initKeymaps(const Common::String &gameId, const Common::String &target) {
 	Common::KeymapArray keymapArray;
+
+	bool fluid = false;
+	if (gameId != "ultima8") {
+		fluid = true;
+		if (ConfMan.hasKey("fluid_movement", target))
+			fluid = ConfMan.getBool("fluid_movement", target);
+		else if (ConfMan.hasKey("fluid_movement"))
+			fluid = ConfMan.getBool("fluid_movement");
+	}
 
 	// Core keymaps
 	Common::U32String desc = (gameId == "ultima8" ? _("Ultima VIII") : _("Crusader"));
@@ -150,10 +197,7 @@ Common::KeymapArray MetaEngine::initKeymaps(const Common::String &gameId) {
 	for (const KeybindingRecord *r = COMMON_KEYS; r->_id; ++r) {
 		act = new Common::Action(r->_id, _(r->_desc));
 		act->setCustomEngineActionEvent(r->_action);
-		if (r->_input1)
-			act->addDefaultInputMapping(r->_input1);
-		if (r->_input2)
-			act->addDefaultInputMapping(r->_input2);
+		addDefaultInputs(act, r, fluid);
 		keyMap->addAction(act);
 	}
 
@@ -162,10 +206,7 @@ Common::KeymapArray MetaEngine::initKeymaps(const Common::String &gameId) {
 	for (const KeybindingRecord *r = game_keys; r->_id; ++r) {
 		act = new Common::Action(r->_id, _(r->_desc));
 		act->setCustomEngineActionEvent(r->_action);
-		if (r->_input1)
-			act->addDefaultInputMapping(r->_input1);
-		if (r->_input2)
-			act->addDefaultInputMapping(r->_input2);
+		addDefaultInputs(act, r, fluid);
 		keyMap->addAction(act);
 	}
 

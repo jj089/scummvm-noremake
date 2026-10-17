@@ -36,6 +36,7 @@ namespace Ultima {
 namespace Ultima8 {
 
 class Debugger;
+class AutoTest;
 class Kernel;
 class UCMachine;
 class Game;
@@ -67,6 +68,7 @@ private:
 	Common::RandomSource _randomSource;
 
 	bool _isRunning;
+	AutoTest *_autoTest;
 	GameInfo *_gameInfo;
 	const UltimaGameDescription *_gameDescription;
 

@@ -113,6 +113,10 @@ public:
 	void setLastAnim(Animation::Sequence anim) {
 		_lastAnim = anim;
 	}
+	//! Set the frame index within the current animation (used for weapon overlays)
+	void setAnimFrame(uint16 frame) {
+		_animFrame = frame;
+	}
 	Direction getDir() const {
 		return _direction;
 	}

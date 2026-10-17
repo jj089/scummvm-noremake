@@ -29,6 +29,16 @@
 #include "ultima/ultima8/world/world.h"
 #include "ultima/ultima8/misc/direction_util.h"
 #include "ultima/ultima8/audio/audio_process.h"
+#include "ultima/ultima8/games/game_data.h"
+#include "ultima/ultima8/gfx/anim_dat.h"
+#include "ultima/ultima8/gfx/main_shape_archive.h"
+#include "ultima/ultima8/world/actors/anim_action.h"
+#include "ultima/ultima8/world/camera_process.h"
+#include "ultima/ultima8/world/actors/auto_firer_process.h"
+#include "ultima/ultima8/gumps/game_map_gump.h"
+#include "ultima/ultima8/kernel/mouse.h"
+#include "ultima/ultima8/ultima8.h"
+#include "common/config-manager.h"
 
 namespace Ultima {
 namespace Ultima8 {
@@ -38,7 +48,9 @@ DEFINE_RUNTIME_CLASSTYPE_CODE(CruAvatarMoverProcess)
 static const int REBEL_BASE_MAP = 40;
 
 CruAvatarMoverProcess::CruAvatarMoverProcess() : AvatarMoverProcess(),
-_avatarAngle(-1), _SGA1Loaded(false), _nextFireTick(0), _lastNPCAlertTick(0) {
+_avatarAngle(-1), _SGA1Loaded(false), _nextFireTick(0), _lastNPCAlertTick(0),
+_fluidMoving(false), _fluidAnim(Animation::stand), _fluidFrame(0), _fluidDist(0),
+_mouseAimActive(false), _lastMouseX(-1), _lastMouseY(-1) {
 }
 
 
@@ -59,6 +71,9 @@ void CruAvatarMoverProcess::run() {
 
 	// Controlled actor may have gone
 	if (!avatar)
+		return;
+
+	if (handleFluidMovement())
 		return;
 
 	// When in combat and not running, update the angle.
@@ -730,6 +745,352 @@ bool CruAvatarMoverProcess::loadData(Common::ReadStream *rs, uint32 version) {
 	if (!AvatarMoverProcess::loadData(rs, version)) return false;
 	_avatarAngle = rs->readSint32LE();
 	_SGA1Loaded = (rs->readByte() != 0);
+	return true;
+}
+
+// Animations that fluid movement may cut short: locomotion and standing poses.
+static bool _isFluidInterruptibleAnim(Animation::Sequence anim) {
+	switch (anim) {
+	case Animation::stand:
+	case Animation::step:
+	case Animation::walk:
+	case Animation::run:
+	case Animation::startRun:
+	case Animation::startRunSmallWeapon:
+	case Animation::startRunLargeWeapon:
+	case Animation::combatRunSmallWeapon:
+	case Animation::combatRunLargeWeapon:
+	case Animation::stopRunningAndDrawSmallWeapon:
+	case Animation::combatStand:
+	case Animation::advance:
+	case Animation::retreat:
+		return true;
+	default:
+		return false;
+	}
+}
+
+// True if the avatar's queued/running animation may be cut short.  Checks the
+// actual animation process rather than lastAnim, which only updates once a new
+// animation starts running (so a just-queued attack still reports the old anim).
+static bool _canInterruptAvatarAnim(const Actor *avatar) {
+	Kernel *kernel = Kernel::get_instance();
+	const uint32 count = kernel->getNumProcesses(avatar->getObjId(), ActorAnimProcess::ACTOR_ANIM_PROC_TYPE);
+	if (count == 0)
+		return true;
+	if (count > 1)
+		return false;
+	const ActorAnimProcess *proc = dynamic_cast<const ActorAnimProcess *>(
+		kernel->findProcess(avatar->getObjId(), ActorAnimProcess::ACTOR_ANIM_PROC_TYPE));
+	return proc && _isFluidInterruptibleAnim(proc->getAction());
+}
+
+Animation::Sequence CruAvatarMoverProcess::fluidMoveAnim(const Actor *avatar) const {
+	// Modern default: run. Holding the run key walks instead.
+	const bool walk = hasMovementFlags(MOVE_RUN);
+	Actor *a = const_cast<Actor *>(avatar);
+	if (avatar->isInCombat()) {
+		const Animation::Sequence anim = walk ? Animation::advance : Animation::combatRunSmallWeapon;
+		if (a->hasAnim(anim))
+			return anim;
+	}
+	if (!walk && a->hasAnim(Animation::run))
+		return Animation::run;
+	return Animation::walk;
+}
+
+bool CruAvatarMoverProcess::fluidTryMove(Actor *avatar, int32 dx, int32 dy, Direction dir) {
+	if (!dx && !dy)
+		return true;
+
+	const CurrentMap *cm = World::get_instance()->getCurrentMap();
+	const Point3 pt = avatar->getLocation();
+	int32 xd, yd, zd;
+	avatar->getFootpadWorld(xd, yd, zd);
+	const uint32 shapeflags = avatar->getShapeInfo()->_flags;
+	const Box start(pt.x, pt.y, pt.z, xd, yd, zd);
+
+	// Try the full move, then sliding along each axis.  For each, allow small
+	// steps up or down so stairs and ramps are followed.
+	const int32 moves[3][2] = { { dx, dy }, { dx, 0 }, { 0, dy } };
+	static const int32 zsteps[] = { 0, 8, -8, 16, -16 };
+	for (const auto &mv : moves) {
+		if (!mv[0] && !mv[1])
+			continue;
+		for (const int32 dz : zsteps) {
+			const Box target(pt.x + mv[0], pt.y + mv[1], pt.z + dz, xd, yd, zd);
+			const PositionInfo info = cm->getPositionInfo(target, start, shapeflags, avatar->getObjId());
+			if (info.valid && info.supported) {
+				// Forced collideMove, as the animation process does, so eggs,
+				// triggers and touch events fire normally.
+				avatar->collideMove(pt.x + mv[0], pt.y + mv[1], pt.z + dz, false, true);
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+bool CruAvatarMoverProcess::getMouseAimDir(const Actor *avatar, Direction &dir) const {
+	GameMapGump *gmg = Ultima8Engine::get_instance()->getGameMapGump();
+	const Mouse *mouse = Mouse::get_instance();
+	if (!gmg || !mouse)
+		return false;
+
+	// Avatar's screen position, computed like GameMapGump::GetLocationOfItem
+	// but without disturbing the avatar's interpolation state.
+	const Point3 a = avatar->getLocation();
+	const Point3 c = CameraProcess::GetCameraLocation();
+	int32 sx = (a.x - a.y) / 4 - (c.x - c.y) / 4;
+	int32 sy = (a.x + a.y) / 8 - a.z - ((c.x + c.y) / 8 - c.z);
+	gmg->GumpToScreenSpace(sx, sy);
+	sy -= 24; // aim from the chest, not the feet
+
+	int32 mx, my;
+	mouse->getMouseCoords(mx, my);
+	const int32 dsx = mx - sx;
+	const int32 dsy = my - sy;
+	if (ABS(dsx) < 4 && ABS(dsy) < 4)
+		return false;
+
+	// Invert the isometric projection: screen x ~ (x - y), screen y ~ (x + y) / 2.
+	const int32 wx = dsx + 2 * dsy;
+	const int32 wy = 2 * dsy - dsx;
+	dir = Direction_GetWorldDir(wy, wx, dirmode_16dirs);
+	return true;
+}
+
+void CruAvatarMoverProcess::fireWhileMoving(Actor *avatar, Direction dir) {
+	if (avatar->getObjId() != kMainActorId || avatar->getMapNum() == REBEL_BASE_MAP)
+		return;
+	Item *wpn = getItem(avatar->getActiveWeapon());
+	if (!wpn || !wpn->getShapeInfo() || !wpn->getShapeInfo()->_weaponInfo)
+		return;
+	const WeaponInfo *wpninfo = wpn->getShapeInfo()->_weaponInfo;
+
+	Kernel *kernel = Kernel::get_instance();
+	if (kernel->getTickNum() < _nextFireTick)
+		return;
+
+	int shotsleft;
+	if (wpninfo->_ammoShape)
+		shotsleft = wpn->getQuality();
+	else if (wpninfo->_energyUse)
+		shotsleft = avatar->getMana() / wpninfo->_energyUse;
+	else
+		shotsleft = 1;
+
+	// Reloading, and the SGA1's per-shot reload, use the original handling.
+	if (!shotsleft || wpn->getShape() == 0x332) {
+		tryAttack();
+		return;
+	}
+
+	// Muzzle position comes from the attack animation's firing frame.
+	const uint32 actionnum = AnimDat::getActionNumberForSequence(Animation::attack, avatar);
+	const AnimAction *action = GameData::get_instance()->getMainShapes()->getAnim(avatar->getShape(), actionnum);
+	if (!action)
+		return;
+	const AnimFrame *fireframe = nullptr;
+	for (unsigned int i = 0; i < action->getSize(); i++) {
+		const AnimFrame &f = action->getFrame(dir, i);
+		if (f.is_cruattack()) {
+			fireframe = &f;
+			break;
+		}
+	}
+	if (!fireframe) {
+		tryAttack();
+		return;
+	}
+
+	if (wpninfo->_damageType == 6)
+		kernel->addProcess(new AutoFirerProcess());
+	avatar->fireWeapon(fireframe->cru_attackx(), fireframe->cru_attacky(), fireframe->cru_attackz(),
+					   dir, wpninfo->_damageType, true);
+	AudioProcess *audio = AudioProcess::get_instance();
+	if (audio)
+		audio->playSFX(wpninfo->_sound, 0x80, avatar->getObjId(), 0, false);
+
+	if (wpninfo->_ammoShape)
+		wpn->setQuality(shotsleft - 1);
+	else if (wpninfo->_energyUse)
+		avatar->setMana(avatar->getMana() - wpninfo->_energyUse);
+	checkForAlertingNPCs();
+
+	// Same rate of fire as the original: the weapon's shot delay, or the
+	// length of the attack animation for weapons that wait for it.
+	uint32 delay = wpninfo->_shotDelay;
+	if (!delay)
+		delay = action->getSize() * (action->getFrameRepeat() + 1);
+	_nextFireTick = kernel->getTickNum() + delay;
+}
+
+void CruAvatarMoverProcess::stopFluidMovement(Actor *avatar) {
+	_fluidMoving = false;
+	const Animation::Sequence standanim = avatar->isInCombat() ? Animation::combatStand : Animation::stand;
+	avatar->setToStartOfAnim(standanim);
+	avatar->setLastAnim(standanim);
+	avatar->setAnimFrame(0);
+}
+
+bool CruAvatarMoverProcess::handleFluidMovement() {
+	if (!ConfMan.hasKey("fluid_movement") || !ConfMan.getBool("fluid_movement"))
+		return false;
+
+	Actor *avatar = getControlledActor();
+	if (!avatar || avatar->isDead() || avatar->isKneeling() ||
+		!avatar->hasFlags(Item::FLG_FASTAREA) || avatar->getGravityPID() != 0 ||
+		Ultima8Engine::get_instance()->isAvatarInStasis()) {
+		_fluidMoving = false;
+		return false;
+	}
+
+	// Rolls, side-steps, crouch, mouse movement and tank-style keys keep the
+	// original behaviour.
+	if (hasMovementFlags(MOVE_MOUSE_DIRECTION | MOVE_STEP | MOVE_FORWARD | MOVE_BACK |
+						 MOVE_TURN_LEFT | MOVE_TURN_RIGHT | MOVE_SHORT_JUMP |
+						 MOVE_ROLL_LEFT | MOVE_ROLL_RIGHT | MOVE_STEP_LEFT | MOVE_STEP_RIGHT |
+						 MOVE_STEP_FORWARD | MOVE_STEP_BACK | MOVE_TOGGLE_CROUCH)) {
+		if (hasMovementFlags(MOVE_TURN_LEFT | MOVE_TURN_RIGHT))
+			_mouseAimActive = false;
+		_fluidMoving = false;
+		return false;
+	}
+
+	// Mouse aiming becomes active as soon as the mouse is moved.
+	int32 mx, my;
+	Mouse::get_instance()->getMouseCoords(mx, my);
+	if (mx != _lastMouseX || my != _lastMouseY) {
+		if (_lastMouseX >= 0)
+			_mouseAimActive = true;
+		_lastMouseX = mx;
+		_lastMouseY = my;
+	}
+	Direction aimdir = avatar->getDir();
+	const bool haveAim = _mouseAimActive && avatar->isInCombat() &&
+		avatar->getMapNum() != REBEL_BASE_MAP && getMouseAimDir(avatar, aimdir);
+	const bool mouseFire = haveAim && _mouseButton[0].isState(MBS_DOWN);
+
+	int x, y;
+	getMovementFlagAxes(x, y);
+	if (x == 0 && y == 0) {
+		if (haveAim) {
+			// Standing with weapon drawn: face the cursor, fire on left button.
+			const bool wantFire = mouseFire || hasMovementFlags(MOVE_ATTACKING);
+			if (avatar->isBusy()) {
+				if (!_canInterruptAvatarAnim(avatar) ||
+					(aimdir == avatar->getDir() && !wantFire))
+					return false;
+				Kernel::get_instance()->killProcesses(avatar->getObjId(), ActorAnimProcess::ACTOR_ANIM_PROC_TYPE, true);
+			}
+			_fluidMoving = false;
+			if (avatar->getDir() != aimdir || avatar->getLastAnim() != Animation::combatStand) {
+				avatar->setDir(aimdir);
+				stopFluidMovement(avatar);
+			}
+			_avatarAngle = Direction_ToCentidegrees(aimdir);
+			if (wantFire)
+				tryAttack();
+			_idleTime = 0;
+			return true;
+		}
+		if (_fluidMoving && !avatar->isBusy())
+			stopFluidMovement(avatar);
+		_fluidMoving = false;
+		return false;
+	}
+
+	if (avatar->isBusy()) {
+		if (!_canInterruptAvatarAnim(avatar))
+			return false;
+		Kernel::get_instance()->killProcesses(avatar->getObjId(), ActorAnimProcess::ACTOR_ANIM_PROC_TYPE, true);
+	}
+
+	// Screen up is world north-west and screen right is world north-east.
+	const int32 wx = x - y;
+	const int32 wy = -x - y;
+	const Direction dir = Direction_GetWorldDir(wy, wx, dirmode_16dirs);
+
+	// Jump while moving: leap in the movement direction.
+	if (hasMovementFlags(MOVE_JUMP) && avatar->hasAnim(Animation::jumpForward)) {
+		clearMovementFlag(MOVE_JUMP);
+		_fluidMoving = false;
+		avatar->setDir(dir);
+		avatar->clearInCombat();
+		step(Animation::jumpForward, dir);
+		return true;
+	}
+
+	const bool firing = (hasMovementFlags(MOVE_ATTACKING) || mouseFire) &&
+		avatar->getMapNum() != REBEL_BASE_MAP;
+	if (firing && !avatar->isInCombat())
+		avatar->setInCombat(0);
+	// While firing with the mouse, face the cursor (strafe); otherwise face
+	// the direction of travel.
+	const Direction facedir = mouseFire ? aimdir : dir;
+
+	const Animation::Sequence anim = fluidMoveAnim(avatar);
+	const uint32 actionnum = AnimDat::getActionNumberForSequence(anim, avatar);
+	const AnimAction *action = GameData::get_instance()->getMainShapes()->getAnim(avatar->getShape(), actionnum);
+	if (!action || action->getSize() == 0)
+		return false;
+	const unsigned int nframes = action->getSize();
+
+	if (!_fluidMoving || anim != _fluidAnim) {
+		_fluidAnim = anim;
+		_fluidFrame = 0;
+		_fluidDist = 0;
+	}
+
+	// Speed matches the original animation: average distance per animation
+	// frame in this direction, spread over the frame's repeat ticks.
+	int32 deltasum = 0;
+	for (unsigned int i = 0; i < nframes; i++)
+		deltasum += ABS(action->getFrame(dir, i)._deltaDir);
+	const double factorlen = sqrt((double)(Direction_XFactor(dir) * Direction_XFactor(dir) +
+										   Direction_YFactor(dir) * Direction_YFactor(dir)));
+	const double frameLen = MAX(1.0, 4.0 * deltasum * factorlen / nframes);
+	const double speed = frameLen / (action->getFrameRepeat() + 1);
+
+	const double inputlen = sqrt((double)(wx * wx + wy * wy));
+	const int32 mdx = (int32)round(wx / inputlen * speed);
+	const int32 mdy = (int32)round(wy / inputlen * speed);
+
+	avatar->setDir(facedir);
+	_avatarAngle = avatar->isInCombat() ? Direction_ToCentidegrees(facedir) : -1;
+
+	if (fluidTryMove(avatar, mdx, mdy, dir)) {
+		_fluidDist += (int32)(speed * 256);
+		while (_fluidDist >= (int32)(frameLen * 256)) {
+			_fluidDist -= (int32)(frameLen * 256);
+			_fluidFrame = (_fluidFrame + 1) % nframes;
+			const AnimFrame &sf = action->getFrame(facedir, _fluidFrame);
+			if (sf._sfx) {
+				AudioProcess *audio = AudioProcess::get_instance();
+				if (audio)
+					audio->playSFX(sf._sfx, 0x60, avatar->getObjId(), 0);
+			}
+		}
+		const AnimFrame &f = action->getFrame(facedir, _fluidFrame);
+		avatar->setFrame(f._frame);
+		if (f.is_cruflipped())
+			avatar->setFlag(Item::FLG_FLIPPED);
+		else
+			avatar->clearFlag(Item::FLG_FLIPPED);
+		avatar->setAnimFrame(_fluidFrame);
+		avatar->setLastAnim(anim);
+		_fluidMoving = true;
+	} else {
+		// Blocked: stand facing the requested direction.
+		stopFluidMovement(avatar);
+		_fluidMoving = true;
+	}
+
+	if (firing)
+		fireWhileMoving(avatar, facedir);
+
+	_idleTime = 0;
 	return true;
 }
 

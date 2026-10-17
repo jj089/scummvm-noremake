@@ -28,6 +28,8 @@
 namespace Ultima {
 namespace Ultima8 {
 
+class Actor;
+
 /**
  * Mover process that replicates the feel of Crusader - moving, combat, jumps, etc.
  * Tries sliding left and right if movement is blocked.  Walking cancels combat.
@@ -88,6 +90,30 @@ private:
 	void step(Animation::Sequence action, Direction direction, bool adjusted = false);
 
 	bool checkOneShotMove(Direction direction);
+
+	/**
+	 * Fluid movement: move the avatar continuously in the direction of the
+	 * movement keys/stick, playing locomotion frames by distance travelled,
+	 * instead of committing to whole animation steps.
+	 * Returns true if it handled the avatar this tick.
+	 */
+	bool handleFluidMovement();
+	void stopFluidMovement(Actor *avatar);
+	Animation::Sequence fluidMoveAnim(const Actor *avatar) const;
+	bool fluidTryMove(Actor *avatar, int32 dx, int32 dy, Direction dir);
+	//! World direction from the avatar to the mouse cursor. False if unavailable.
+	bool getMouseAimDir(const Actor *avatar, Direction &dir) const;
+	//! Run-and-gun: fire the active weapon without stopping for the attack animation.
+	void fireWhileMoving(Actor *avatar, Direction dir);
+
+	bool _fluidMoving;
+	//! Mouse aiming is active once the mouse moves; keyboard turning disables it.
+	bool _mouseAimActive;
+	int32 _lastMouseX, _lastMouseY;
+	Animation::Sequence _fluidAnim;
+	unsigned int _fluidFrame;
+	//! Distance travelled since the last locomotion frame change (world units * 256)
+	int32 _fluidDist;
 };
 
 } // End of namespace Ultima8

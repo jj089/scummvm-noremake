@@ -57,7 +57,7 @@ public:
 	/**
 	 * Initialize keymaps
 	 */
-	static Common::KeymapArray initKeymaps(const Common::String &gameId);
+	static Common::KeymapArray initKeymaps(const Common::String &gameId, const Common::String &target);
 
 	/**
 	 * Return meta information from the specified save state for saves that do not have ExtendedSavegameHeader

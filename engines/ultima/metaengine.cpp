@@ -172,6 +172,17 @@ static const ADExtraGuiOptionsMap optionsList[] = {
 			0
 		}
 	},
+	{
+		GAMEOPTION_FLUID_MOVEMENT,
+		{
+			_s("Fluid movement"),
+			_s("Move smoothly in any direction instead of in fixed animation steps."),
+			"fluid_movement",
+			true,
+			0,
+			0
+		}
+	},
 	AD_EXTRA_GUI_OPTIONS_TERMINATOR
 };
 
@@ -275,7 +286,7 @@ Common::KeymapArray UltimaMetaEngine::initKeymaps(const char *target) const {
 #endif
 #ifdef ENABLE_ULTIMA8
 	if (gameId == "ultima8" || gameId == "remorse" || gameId == "regret")
-		return Ultima::Ultima8::MetaEngine::initKeymaps(gameId);
+		return Ultima::Ultima8::MetaEngine::initKeymaps(gameId, target);
 #endif
 	return Common::KeymapArray();
 }

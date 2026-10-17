@@ -31,6 +31,7 @@
 #include "common/fs.h"
 #include "graphics/surface.h"
 #include "video/avi_decoder.h"
+#include "ultima/ultima8/misc/autotest.h"
 #include "ultima/ultima.h"
 #include "ultima/ultima8/audio/audio_mixer.h"
 #include "ultima/ultima8/audio/cru_music_process.h"
@@ -121,7 +122,7 @@ Ultima8Engine *Ultima8Engine::_instance = nullptr;
 
 Ultima8Engine::Ultima8Engine(OSystem *syst, const Ultima::UltimaGameDescription *gameDesc) :
 		Engine(syst), _gameDescription(gameDesc), _randomSource("Ultima8"),
-		_isRunning(false),  _gameInfo(nullptr),
+		_isRunning(false), _autoTest(nullptr), _gameInfo(nullptr),
 		_configFileMan(nullptr), _saveCount(0), _game(nullptr), _lastError(Common::kNoError),
 		_kernel(nullptr), _objectManager(nullptr), _mouse(nullptr), _ucMachine(nullptr),
 		_screen(nullptr), _fontManager(nullptr), _paletteManager(nullptr), _gameData(nullptr),
@@ -137,6 +138,7 @@ Ultima8Engine::Ultima8Engine(OSystem *syst, const Ultima::UltimaGameDescription 
 }
 
 Ultima8Engine::~Ultima8Engine() {
+	delete _autoTest;
 	delete _kernel;
 	delete _objectManager;
 	delete _audioMixer;
@@ -202,6 +204,10 @@ Common::Error Ultima8Engine::run() {
 
 	Common::Error result = initialize();
 	if (result.getCode() == Common::kNoError) {
+		if (ConfMan.hasKey("cru_autotest")) {
+			_autoTest = new AutoTest();
+			_autoTest->loadScript(ConfMan.get("cru_autotest"));
+		}
 		result = runGame();
 		deinitialize();
 	}
@@ -722,6 +728,9 @@ Common::Error Ultima8Engine::runGame() {
 
 		// Paint Screen
 		paint();
+
+		if (_autoTest)
+			_autoTest->update();
 
 		if (_lastError.getCode() != Common::kNoError) {
 			return _lastError;
