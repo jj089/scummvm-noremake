@@ -1187,7 +1187,40 @@ void ModXmS3mStream::resample(const Channel &channel, int *mixBuf, int offset, i
 		loopEnd = sample->loopStart + loopLen;
 		outIdx = offset * 2;
 		outEnd = (offset + count) * 2;
-		if (_interpolation) {
+		if (_interpolation >= 2) {
+			// 4-point cubic (Hermite) interpolation: smoother than linear,
+			// with less of the dull or gritty sound on pitched-down samples.
+			const float fraScale = 1.0f / (1 << FP_SHIFT);
+			while (outIdx < outEnd) {
+				if (samIdx >= loopEnd) {
+					if (loopLen > 1) {
+						while (samIdx >= loopEnd) {
+							samIdx -= loopLen;
+						}
+					} else {
+						break;
+					}
+				}
+				if (samIdx < 0)
+					samIdx = 0;
+				// The sample buffers hold one extra point past loopEnd.
+				const float p0 = sampleData[samIdx > 0 ? samIdx - 1 : 0];
+				const float p1 = sampleData[samIdx];
+				const float p2 = sampleData[samIdx + 1];
+				const float p3 = sampleData[samIdx + 2 <= loopEnd ? samIdx + 2 : samIdx + 1];
+				const float t = samFra * fraScale;
+				const float a = 1.5f * (p1 - p2) + 0.5f * (p3 - p0);
+				const float b = p0 - 2.5f * p1 + 2.0f * p2 - 0.5f * p3;
+				const float cc = 0.5f * (p2 - p0);
+				y = (int)(((a * t + b) * t + cc) * t + p1);
+				y = CLIP(y, -32768, 32767);
+				mixBuf[outIdx++] += (y * lGain) >> FP_SHIFT;
+				mixBuf[outIdx++] += (y * rGain) >> FP_SHIFT;
+				samFra += step;
+				samIdx += samFra >> FP_SHIFT;
+				samFra &= FP_MASK;
+			}
+		} else if (_interpolation) {
 			while (outIdx < outEnd) {
 				if (samIdx >= loopEnd) {
 					if (loopLen > 1) {

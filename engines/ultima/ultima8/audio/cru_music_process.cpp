@@ -192,7 +192,8 @@ void CruMusicProcess::playMusic_internal(int track) {
 			return;
 		}
 
-		Audio::AudioStream *stream = Audio::makeModXmS3mStream(rs, DisposeAfterUse::YES);
+		// Cubic interpolation: the default (none) makes the music gritty.
+		Audio::AudioStream *stream = Audio::makeModXmS3mStream(rs, DisposeAfterUse::YES, 0, 2);
 		if (!stream) {
 			error("Couldn't create stream from AMF file: %s", fname.c_str());
 			return;

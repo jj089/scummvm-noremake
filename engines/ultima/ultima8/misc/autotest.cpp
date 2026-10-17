@@ -34,6 +34,9 @@
 #include "common/events.h"
 #include "common/file.h"
 #include "common/fs.h"
+#include "common/file.h"
+#include "audio/audiostream.h"
+#include "audio/mods/mod_xm_s3m.h"
 #include "common/system.h"
 #include "common/tokenizer.h"
 #include "image/png.h"
@@ -291,6 +294,36 @@ void AutoTest::execute(const Common::String &line) {
 		if (shown)
 			g_system->unlockScreen();
 		delete ws;
+	} else if (cmd == "dumpmusic") {
+		// dumpmusic <amf name> <seconds> <interpolation> <out.raw>: render
+		// music to raw 16-bit stereo for checking the player offline.
+		const Common::String name = tok.nextToken();
+		const int seconds = atoi(tok.nextToken().c_str());
+		const int interp = atoi(tok.nextToken().c_str());
+		const Common::String out = tok.nextToken();
+		Common::File *rs = new Common::File();
+		if (!rs->open(Common::Path(Common::String::format("sound/%s.amf", name.c_str())))) {
+			warning("autotest: no music %s", name.c_str());
+			delete rs;
+			return;
+		}
+		Audio::AudioStream *stream = Audio::makeModXmS3mStream(rs, DisposeAfterUse::YES, 0, interp);
+		Common::FSNode node(Common::Path(out, Common::Path::kNativeSeparator));
+		Common::SeekableWriteStream *ws = node.createWriteStream(false);
+		if (stream && ws) {
+			int16 buf[4096];
+			int total = stream->getRate() * 2 * seconds;
+			while (total > 0) {
+				const int got = stream->readBuffer(buf, MIN(total, 4096));
+				if (got <= 0)
+					break;
+				ws->write(buf, got * 2);
+				total -= got;
+			}
+			debug("autotest: music %s rate %d written to %s", name.c_str(), stream->getRate(), out.c_str());
+		}
+		delete ws;
+		delete stream;
 	} else if (cmd == "movie") {
 		MovieGump::CruMovieViewer(tok.nextToken(), 640, 480, nullptr, nullptr, 0);
 	} else if (cmd == "god") {
