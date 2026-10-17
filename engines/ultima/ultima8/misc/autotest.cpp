@@ -28,6 +28,7 @@
 #include "ultima/ultima8/gumps/game_map_gump.h"
 #include "ultima/ultima8/world/camera_process.h"
 #include "ultima/ultima8/gumps/movie_gump.h"
+#include "ultima/ultima8/world/actors/cru_avatar_mover_process.h"
 #include "ultima/ultima8/world/actors/main_actor.h"
 #include "ultima/ultima8/world/get_object.h"
 #include "common/events.h"
@@ -132,12 +133,15 @@ void AutoTest::logAvatar(const Common::String &label) {
 	int32 mx, my;
 	Mouse::get_instance()->getMouseCoords(mx, my);
 	const Item *wpn = getItem(av->getActiveWeapon());
-	debug("autotest[%s]: t=%u frameNum=%u map=%d pos=%d,%d,%d dir=%d shapeFrame=%u lastAnim=%d busy=%d combat=%d flipped=%d screen=%d,%d mouse=%d,%d ammo=%d",
+	const CruAvatarMoverProcess *cru = dynamic_cast<const CruAvatarMoverProcess *>(Ultima8Engine::get_instance()->getAvatarMoverProcess());
+	const int aimdeg = cru ? (int)cru->getAvatarAngleDegrees() : -1;
+	debug("autotest[%s]: t=%u frameNum=%u map=%d pos=%d,%d,%d dir=%d shapeFrame=%u lastAnim=%d busy=%d combat=%d flipped=%d screen=%d,%d mouse=%d,%d ammo=%d aim=%d lmb=%d mapbtn=%d attackflag=%d",
 		label.c_str(), g_system->getMillis(), Kernel::get_instance()->getFrameNum(),
 		av->getMapNum(), pt.x, pt.y, pt.z, (int)av->getDir(), av->getFrame(),
 		(int)av->getLastAnim(), av->isBusy() ? 1 : 0, av->isInCombat() ? 1 : 0,
 		av->hasFlags(Item::FLG_FLIPPED) ? 1 : 0, sx, sy, mx, my,
-		wpn ? (int)wpn->getQuality() : -1);
+		wpn ? (int)wpn->getQuality() : -1, aimdeg, Mouse::get_instance()->isMouseDownEvent(Mouse::BUTTON_LEFT) ? 1 : 0,
+		cru && cru->isMapButtonDown() ? 1 : 0, cru && cru->hasMovementFlags(AvatarMoverProcess::MOVE_ATTACKING) ? 1 : 0);
 }
 
 void AutoTest::execute(const Common::String &line) {

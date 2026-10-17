@@ -183,6 +183,17 @@ static const ADExtraGuiOptionsMap optionsList[] = {
 			0
 		}
 	},
+	{
+		GAMEOPTION_SMOOTH_MOTION,
+		{
+			_s("Smooth motion"),
+			_s("Draw in-between positions so movement and scrolling look smooth on fast displays."),
+			"interpolate",
+			true,
+			0,
+			0
+		}
+	},
 	AD_EXTRA_GUI_OPTIONS_TERMINATOR
 };
 

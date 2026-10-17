@@ -650,7 +650,8 @@ Common::Error Ultima8Engine::startupGame() {
 	ConfMan.registerDefault("font_antialiasing", true);
 	ConfMan.registerDefault("frameSkip", false);
 	ConfMan.registerDefault("frameLimit", true);
-	// Position interpolation looks nice on U8, but causes Crusader to look janky.
+	// Position interpolation looks nice on U8. Crusader used to look janky with
+	// it because of camera lerp bugs (now fixed); it is the "Smooth motion" option.
 	ConfMan.registerDefault("interpolate", _gameInfo->_type == GameInfo::GAME_U8);
 	ConfMan.registerDefault("cheat", false);
 

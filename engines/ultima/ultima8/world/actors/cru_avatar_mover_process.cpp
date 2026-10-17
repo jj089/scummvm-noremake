@@ -862,7 +862,15 @@ void CruAvatarMoverProcess::onJoystickAxis(int axis, int position) {
 		_aimStickY = position;
 }
 
-bool CruAvatarMoverProcess::getMouseAimDir(const Actor *avatar, Direction &dir) const {
+// Exact world angle (centidegrees, 0 = north, clockwise; as _avatarAngle) for a world vector.
+static int32 _worldVectorToCentidegrees(int32 wx, int32 wy) {
+	int32 cd = (int32)round(Math::rad2deg(atan2((double)wx, (double)-wy)) * 100.0);
+	if (cd < 0)
+		cd += 36000;
+	return cd % 36000;
+}
+
+bool CruAvatarMoverProcess::getMouseAimDir(const Actor *avatar, Direction &dir, int32 *angle) const {
 	GameMapGump *gmg = Ultima8Engine::get_instance()->getGameMapGump();
 	const Mouse *mouse = Mouse::get_instance();
 	if (!gmg || !mouse)
@@ -888,6 +896,8 @@ bool CruAvatarMoverProcess::getMouseAimDir(const Actor *avatar, Direction &dir) 
 	const int32 wx = dsx + 2 * dsy;
 	const int32 wy = 2 * dsy - dsx;
 	dir = Direction_GetWorldDir(wy, wx, dirmode_16dirs);
+	if (angle)
+		*angle = _worldVectorToCentidegrees(wx, wy);
 	return true;
 }
 
@@ -999,6 +1009,7 @@ bool CruAvatarMoverProcess::handleFluidMovement() {
 		_lastMouseY = my;
 	}
 	Direction aimdir = avatar->getDir();
+	int32 aimAngle = Direction_ToCentidegrees(aimdir);
 	const bool canAim = avatar->getMapNum() != REBEL_BASE_MAP;
 
 	// Right stick aims (and readies the weapon) once pushed past the dead zone.
@@ -1008,11 +1019,21 @@ bool CruAvatarMoverProcess::handleFluidMovement() {
 		_mouseAimActive = false;
 		if (!avatar->isInCombat())
 			avatar->setInCombat(0);
-		aimdir = Direction_GetWorldDir(2 * _aimStickY - _aimStickX, _aimStickX + 2 * _aimStickY, dirmode_16dirs);
+		const int32 swx = _aimStickX + 2 * _aimStickY, swy = 2 * _aimStickY - _aimStickX;
+		aimdir = Direction_GetWorldDir(swy, swx, dirmode_16dirs);
+		aimAngle = _worldVectorToCentidegrees(swx, swy);
+	}
+
+	// Left button on the game world fires: draw the weapon if needed.
+	// (The mover only receives button presses made on the game map.)
+	if (canAim && !stickAim && _mouseButton[0].isState(MBS_DOWN)) {
+		_mouseAimActive = true;
+		if (!avatar->isInCombat())
+			avatar->setInCombat(0);
 	}
 
 	const bool haveAim = stickAim || (canAim && _mouseAimActive && avatar->isInCombat() &&
-		getMouseAimDir(avatar, aimdir));
+		getMouseAimDir(avatar, aimdir, &aimAngle));
 	const bool mouseFire = haveAim && !stickAim && _mouseButton[0].isState(MBS_DOWN);
 
 	int x, y;
@@ -1032,7 +1053,9 @@ bool CruAvatarMoverProcess::handleFluidMovement() {
 				avatar->setDir(aimdir);
 				stopFluidMovement(avatar);
 			}
-			_avatarAngle = Direction_ToCentidegrees(aimdir);
+			// Exact angle, so the crosshair sits on the aim rather than
+			// snapping between the 16 facing directions.
+			_avatarAngle = aimAngle;
 			if (wantFire)
 				tryAttack();
 			_idleTime = 0;
@@ -1069,9 +1092,9 @@ bool CruAvatarMoverProcess::handleFluidMovement() {
 		avatar->getMapNum() != REBEL_BASE_MAP;
 	if (firing && !avatar->isInCombat())
 		avatar->setInCombat(0);
-	// Face the direction of travel, except while firing with the mouse or
-	// aiming with the right stick: then face the aim and strafe.
-	const bool strafing = mouseFire || stickAim;
+	// With an aim (weapon drawn and mouse in use, or the right stick), face
+	// it and strafe; otherwise face the direction of travel.
+	const bool strafing = haveAim;
 	Direction facedir = strafing ? aimdir : dir;
 
 	// The locomotion animation sets the speed of travel.
@@ -1104,7 +1127,7 @@ bool CruAvatarMoverProcess::handleFluidMovement() {
 	if (!fluidTryMove(avatar, mdx, mdy, dir, movedx, movedy)) {
 		// Blocked: stand facing the requested direction.
 		avatar->setDir(facedir);
-		_avatarAngle = avatar->isInCombat() ? Direction_ToCentidegrees(facedir) : -1;
+		_avatarAngle = avatar->isInCombat() ? (strafing ? aimAngle : Direction_ToCentidegrees(facedir)) : -1;
 		stopFluidMovement(avatar);
 		_fluidMoving = true;
 		if (firing)
@@ -1153,7 +1176,7 @@ bool CruAvatarMoverProcess::handleFluidMovement() {
 	const double frameLen = frameLength(visaction, facedir);
 
 	avatar->setDir(facedir);
-	_avatarAngle = avatar->isInCombat() ? Direction_ToCentidegrees(facedir) : -1;
+	_avatarAngle = avatar->isInCombat() ? (strafing ? aimAngle : Direction_ToCentidegrees(facedir)) : -1;
 
 	{
 		_fluidDist += (int32)(speed * 256);

@@ -56,6 +56,11 @@ public:
 	//! Analog stick input, used to aim with the right stick in fluid movement.
 	void onJoystickAxis(int axis, int position);
 
+	//! Is the left mouse button held on the game map (for diagnostics)
+	bool isMapButtonDown() const {
+		return _mouseButton[0].isState(MBS_DOWN);
+	}
+
 private:
 	/** Try readying or firing weapon. */
 	void tryAttack();
@@ -106,7 +111,7 @@ private:
 	//! Move by (dx, dy), sliding along walls if needed. Reports the move made.
 	bool fluidTryMove(Actor *avatar, int32 dx, int32 dy, Direction dir, int32 &movedx, int32 &movedy);
 	//! World direction from the avatar to the mouse cursor. False if unavailable.
-	bool getMouseAimDir(const Actor *avatar, Direction &dir) const;
+	bool getMouseAimDir(const Actor *avatar, Direction &dir, int32 *angle = nullptr) const;
 	//! Run-and-gun: fire the active weapon without stopping for the attack animation.
 	void fireWhileMoving(Actor *avatar, Direction dir);
 
