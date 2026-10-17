@@ -144,7 +144,7 @@ Ultima8Engine::Ultima8Engine(OSystem *syst, const Ultima::UltimaGameDescription 
 		_showTouching(false), _hackMoverEnabled(false), _timeOffset(0),
 		_hasCheated(false), _cheatsEnabled(false),
 		_fontOverride(false), _fontAntialiasing(false), _audioMixer(0), _inverterGump(nullptr),
-		_lerpFactor(256), _controllerActive(false), _postProcess(nullptr), _sharpen(false),
+		_lerpFactor(256), _controllerActive(false), _postProcess(nullptr), _sharpen(false), _glow(false),
 		_inBetweenFrame(false), _crusaderTeleporting(false), _moveKeyFrame(0),
 		_highRes(false), _priorFrameCounterTime(0) {
 	_instance = this;
@@ -824,6 +824,10 @@ void Ultima8Engine::paint() {
 	_screen->fill32(TEX32_PACK_RGB(0x10, 0xFF, 0x10), r);
 #endif
 
+	// No glow under menus: the mask only knows about the game world.
+	const bool glowNow = _glow && !_desktopGump->FindGump<ModalGump>();
+	if (glowNow)
+		_screen->clearGlowMask();
 	_desktopGump->Paint(_screen, _lerpFactor, false);
 #ifdef PAINT_TIMING
 	tpaint += g_system->getMillis();
@@ -840,9 +844,11 @@ void Ultima8Engine::paint() {
 	if (screen) {
 		// The sharpened copy goes to the display; the frame itself stays
 		// plain, so nothing gets sharpened twice.
-		if (_sharpen && !_postProcess)
+		if ((_sharpen || _glow) && !_postProcess)
 			_postProcess = new PostProcess();
-		if (_sharpen && _postProcess->present(*screen->surfacePtr())) {
+		int maskW, maskH;
+		const Common::Array<uint8> &glowMask = _screen->getGlowMask(maskW, maskH);
+		if (_postProcess && _postProcess->present(*screen->surfacePtr(), _sharpen, glowNow, glowMask, maskW, maskH)) {
 			screen->clearDirtyRects();
 		} else {
 			screen->update();
@@ -1662,6 +1668,7 @@ void Ultima8Engine::applyGameSettings() {
 	_frameLimit = ConfMan.getBool("frameLimit");
 	_interpolate = ConfMan.getBool("interpolate");
 	_sharpen = GAME_IS_CRUSADER && (!ConfMan.hasKey("sharpen") || ConfMan.getBool("sharpen"));
+	_glow = GAME_IS_CRUSADER && (!ConfMan.hasKey("glow") || ConfMan.getBool("glow"));
 	_cheatsEnabled = ConfMan.getBool("cheat");
 }
 

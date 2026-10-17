@@ -37,7 +37,7 @@ namespace Ultima8 {
 RenderSurface::RenderSurface(int width, int height, const Graphics::PixelFormat &format) :
 		_pixels(nullptr), _ox(0), _oy(0), _pitch(0),
 		_flipped(false), _clipWindow(0, 0, 0, 0), _lockCount(0),
-		_disposeAfterUse(DisposeAfterUse::YES), _scale(1) {
+		_disposeAfterUse(DisposeAfterUse::YES), _scale(1), _glowMaskW(0), _glowMaskH(0), _glowMarking(false) {
 
 	_surface = new Graphics::ManagedSurface(width, height, format);
 	_clipWindow.setWidth(_surface->w);
@@ -49,12 +49,49 @@ RenderSurface::RenderSurface(int width, int height, const Graphics::PixelFormat 
 RenderSurface::RenderSurface(Graphics::ManagedSurface *s, DisposeAfterUse::Flag disposeAfterUse, int scale) :
 		_pixels(nullptr), _ox(0), _oy(0), _pitch(0),
 		_flipped(false), _clipWindow(0, 0, 0, 0), _lockCount(0),
-		_surface(s), _disposeAfterUse(disposeAfterUse), _scale(MAX(1, scale)) {
+		_surface(s), _disposeAfterUse(disposeAfterUse), _scale(MAX(1, scale)), _glowMaskW(0), _glowMaskH(0),
+		_glowMarking(false) {
 
 	_clipWindow.setWidth(_surface->w / _scale);
 	_clipWindow.setHeight(_surface->h / _scale);
 
 	SetPixelsPointer();
+}
+
+void RenderSurface::clearGlowMask() {
+	_glowMaskW = _surface->w / GLOW_CELL;
+	_glowMaskH = _surface->h / GLOW_CELL;
+	_glowMask.resize(_glowMaskW * _glowMaskH);
+	if (!_glowMask.empty())
+		memset(_glowMask.data(), 0, _glowMask.size());
+}
+
+void RenderSurface::markGlowPhys(int32 px, int32 py, const Common::Rect &clip) {
+	if (!clip.contains(px, py))
+		return;
+	const int32 mx = (px + _ox * _scale) / GLOW_CELL, my = (py + _oy * _scale) / GLOW_CELL;
+	if (mx >= 0 && my >= 0 && mx < _glowMaskW && my < _glowMaskH)
+		_glowMask[my * _glowMaskW + mx] = 1;
+}
+
+void RenderSurface::markGlow(const ShapeFrame *frame, int32 x, int32 y, bool mirrored) {
+	if (_glowMask.empty())
+		return;
+	const Graphics::Surface &src = frame->getSurface();
+	const Common::Rect clip = physClip();
+	const int32 top = (y - frame->_yoff) * _scale;
+	const int32 left = mirrored ? (x + frame->_xoff + 1 - src.w) * _scale : (x - frame->_xoff) * _scale;
+	// Cells are at least as big as a scaled pixel, so marking the centre of
+	// each source pixel covers the shape.
+	for (int fy = 0; fy < src.h; fy++) {
+		const uint8 *row = static_cast<const uint8 *>(src.getBasePtr(0, fy));
+		for (int fx = 0; fx < src.w; fx++) {
+			if (row[fx] == frame->_keycolor)
+				continue;
+			const int sx = mirrored ? src.w - 1 - fx : fx;
+			markGlowPhys(left + sx * _scale + _scale / 2, top + fy * _scale + _scale / 2, clip);
+		}
+	}
 }
 
 Common::Rect RenderSurface::physClip() const {
@@ -1338,6 +1375,14 @@ bool RenderSurface::paintHD(const Shape *s, uint32 framenum, int32 x, int32 y, b
 		paintHDLogic<uint32>(_pixels, _pitch, physClip(), _surface->format, *hd, left, top, mirrored, s->getPalette(), highlight);
 		if (cycle)
 			paintCyclePixels<uint32>(_pixels, _pitch, physClip(), *cycle, frame->_width, left, top, _scale, mirrored, map);
+		// Blinking lights and screens give off light.
+		if (cycle && !_glowMask.empty()) {
+			const Common::Rect clip = physClip();
+			for (const uint32 p : *cycle) {
+				const int cx = mirrored ? frame->_width - 1 - (int)(p & 0xFFF) : (int)(p & 0xFFF);
+				markGlowPhys(left + cx * _scale, top + (int)((p >> 12) & 0xFFF) * _scale, clip);
+			}
+		}
 	} else if (_surface->format.bytesPerPixel == 2) {
 		paintHDLogic<uint16>(_pixels, _pitch, physClip(), _surface->format, *hd, left, top, mirrored, s->getPalette(), highlight);
 		if (cycle)
@@ -1352,6 +1397,8 @@ void RenderSurface::Paint(const Shape *s, uint32 framenum, int32 x, int32 y, boo
 	const ShapeFrame *frame = s->getFrame(framenum);
 	if (!frame || !s->getPalette())
 		return;
+	if (_glowMarking)
+		markGlow(frame, x, y, mirrored);
 
 	if (paintHD(s, framenum, x, y, mirrored))
 		return;
@@ -1399,6 +1446,8 @@ void RenderSurface::PaintTranslucent(const Shape *s, uint32 framenum, int32 x, i
 	const ShapeFrame *frame = s->getFrame(framenum);
 	if (!frame || !s->getPalette())
 		return;
+	if (_glowMarking)
+		markGlow(frame, x, y, mirrored);
 
 	if (paintHDTranslucent(s, framenum, x, y, mirrored))
 		return;
@@ -1426,6 +1475,8 @@ void RenderSurface::PaintInvisible(const Shape *s, uint32 framenum, int32 x, int
 	const ShapeFrame *frame = s->getFrame(framenum);
 	if (!frame || !s->getPalette())
 		return;
+	if (_glowMarking)
+		markGlow(frame, x, y, mirrored);
 
 	const FrameSrc fs = makeFrameSrc(frame, _scale, mirrored, x, y);
 	const Common::Rect clip = physClip();
@@ -1450,6 +1501,8 @@ void RenderSurface::PaintHighlight(const Shape *s, uint32 framenum, int32 x, int
 	const ShapeFrame *frame = s->getFrame(framenum);
 	if (!frame || !s->getPalette())
 		return;
+	if (_glowMarking)
+		markGlow(frame, x, y, mirrored);
 
 	if (!trans && paintHD(s, framenum, x, y, mirrored, col32))
 		return;

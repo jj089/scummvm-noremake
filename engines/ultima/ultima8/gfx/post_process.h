@@ -22,6 +22,7 @@
 #ifndef ULTIMA8_GFX_POSTPROCESS_H
 #define ULTIMA8_GFX_POSTPROCESS_H
 
+#include "common/array.h"
 #include "graphics/surface.h"
 
 namespace Ultima {
@@ -29,7 +30,8 @@ namespace Ultima8 {
 
 /**
  * Whole-screen effects applied to the finished frame just before it is
- * shown: a light sharpen with a little extra colour and contrast.
+ * shown: a light sharpen with a little extra colour and contrast, and a soft
+ * glow around bright, strongly coloured pixels (lights, fire, screens).
  * Only 32-bit surfaces are processed.
  */
 class PostProcess {
@@ -39,12 +41,24 @@ public:
 
 	//! Process the frame into a separate buffer and show that on screen;
 	//! the frame itself is left unchanged. Returns false if nothing was done.
-	bool present(const Graphics::Surface &frame);
+	//! glowMask marks which cells (GLOW_SCALE pixels square) give off light.
+	bool present(const Graphics::Surface &frame, bool sharpen, bool glow,
+				 const Common::Array<uint8> &glowMask, int maskW, int maskH);
 
 private:
 	Graphics::Surface _out;
 	uint8 _contrast[256];
 
+	// Glow, worked out at a quarter of the screen size.
+	int _qw, _qh;
+	Common::Array<uint8> _glow[3], _tmp; //!< r, g, b planes
+	Common::Array<uint32> _glowRows;     //!< glow rows stretched to full width
+	Common::Array<bool> _glowRowUsed;
+
+	void sharpenInto(const Graphics::Surface &frame);
+	bool buildGlow(const Graphics::Surface &frame, const Common::Array<uint8> &mask, int maskW, int maskH);
+	void blurPlane(uint8 *plane);
+	void addGlow();
 };
 
 } // End of namespace Ultima8

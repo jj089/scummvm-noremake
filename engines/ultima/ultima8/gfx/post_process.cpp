@@ -36,7 +36,13 @@ static const int SHARPEN = 72;     // unsharp amount on a 1 pixel radius
 static const int SATURATION = 282; // 1.10x colour
 static const int CONTRAST = 266;   // 1.04x around mid grey
 
-PostProcess::PostProcess() {
+// Glow: in light sources, colours brighter than GLOW_START light up.
+static const int GLOW_START = 110;
+static const int GLOW_STRENGTH = 300; // 1/256ths
+static const int GLOW_SCALE = 4;      // glow resolution divisor
+static const int GLOW_RADIUS = 3;     // box blur radius (glow pixels), run twice
+
+PostProcess::PostProcess() : _qw(0), _qh(0) {
 	for (int i = 0; i < 256; i++)
 		_contrast[i] = CLIP(128 + (((i - 128) * CONTRAST) >> 8), 0, 255);
 }
@@ -49,14 +55,30 @@ static inline int clampByte(int v) {
 	return v < 0 ? 0 : (v > 255 ? 255 : v);
 }
 
-bool PostProcess::present(const Graphics::Surface &frame) {
+bool PostProcess::present(const Graphics::Surface &frame, bool sharpen, bool glow,
+						  const Common::Array<uint8> &glowMask, int maskW, int maskH) {
 	const Graphics::PixelFormat &fmt = frame.format;
 	if (fmt.bytesPerPixel != 4 || fmt.rBits() != 8 || fmt.gBits() != 8 || fmt.bBits() != 8 || frame.h < 3 || frame.w < 3)
+		return false;
+	if (!sharpen && !glow)
 		return false;
 	if (_out.w != frame.w || _out.h != frame.h || _out.format != frame.format) {
 		_out.free();
 		_out.create(frame.w, frame.h, frame.format);
 	}
+	if (sharpen)
+		sharpenInto(frame);
+	else
+		_out.copyFrom(frame);
+	if (glow && buildGlow(frame, glowMask, maskW, maskH))
+		addGlow();
+	g_system->copyRectToScreen(_out.getPixels(), _out.pitch, 0, 0, _out.w, _out.h);
+	g_system->updateScreen();
+	return true;
+}
+
+void PostProcess::sharpenInto(const Graphics::Surface &frame) {
+	const Graphics::PixelFormat &fmt = frame.format;
 	// Edge rows and columns are copied as they are.
 	memcpy(_out.getBasePtr(0, 0), frame.getBasePtr(0, 0), frame.w * 4);
 	memcpy(_out.getBasePtr(0, frame.h - 1), frame.getBasePtr(0, frame.h - 1), frame.w * 4);
@@ -144,9 +166,137 @@ bool PostProcess::present(const Graphics::Surface &frame) {
 			out[x] = ((uint32)r << rs) | ((uint32)g << gs) | ((uint32)b << bs) | amask;
 		}
 	}
-	g_system->copyRectToScreen(_out.getPixels(), _out.pitch, 0, 0, _out.w, _out.h);
-	g_system->updateScreen();
+}
+
+bool PostProcess::buildGlow(const Graphics::Surface &frame, const Common::Array<uint8> &mask, int maskW, int maskH) {
+	const Graphics::PixelFormat &fmt = frame.format;
+	const uint rs = fmt.rShift, gs = fmt.gShift, bs = fmt.bShift;
+	_qw = frame.w / GLOW_SCALE;
+	_qh = frame.h / GLOW_SCALE;
+	if (_qw < 2 || _qh < 2 || maskW != _qw || maskH != _qh || mask.size() != (uint)(_qw * _qh))
+		return false;
+	for (int c = 0; c < 3; c++)
+		_glow[c].resize(_qw * _qh);
+	_tmp.resize(_qw * _qh);
+
+	// Source: in cells the game marked as light sources, how far pixels are
+	// above GLOW_START, sampled at four points of each cell.
+	bool any = false;
+	for (int qy = 0; qy < _qh; qy++) {
+		for (int qx = 0; qx < _qw; qx++) {
+			int sr = 0, sg = 0, sb = 0;
+			for (int k = 0; k < 4 && mask[qy * _qw + qx]; k++) {
+				const int x = qx * GLOW_SCALE + 1 + (k & 1) * 2, y = qy * GLOW_SCALE + 1 + (k >> 1) * 2;
+				const uint32 p = *static_cast<const uint32 *>(frame.getBasePtr(x, y));
+				const int r = (p >> rs) & 0xFF, g = (p >> gs) & 0xFF, b = (p >> bs) & 0xFF;
+				const int mx = MAX(r, MAX(g, b));
+				if (mx <= GLOW_START)
+					continue;
+				// 0..256: brightness above the threshold
+				const int wgt = (mx - GLOW_START) * 256 / (255 - GLOW_START);
+				sr += r * wgt;
+				sg += g * wgt;
+				sb += b * wgt;
+			}
+			const int i = qy * _qw + qx;
+			_glow[0][i] = MIN(255, sr >> 10);
+			_glow[1][i] = MIN(255, sg >> 10);
+			_glow[2][i] = MIN(255, sb >> 10);
+			any = any || _glow[0][i] || _glow[1][i] || _glow[2][i];
+		}
+	}
+	if (!any)
+		return false;
+	for (int c = 0; c < 3; c++) {
+		blurPlane(_glow[c].data());
+		blurPlane(_glow[c].data());
+	}
+
+	// Stretch each glow row to full width, in the screen's pixel layout.
+	const int w = frame.w;
+	_glowRows.resize(_qh * w);
+	_glowRowUsed.resize(_qh);
+	for (int qy = 0; qy < _qh; qy++) {
+		const uint8 *pr = &_glow[0][qy * _qw], *pg = &_glow[1][qy * _qw], *pb = &_glow[2][qy * _qw];
+		uint32 *row = &_glowRows[qy * w];
+		bool used = false;
+		for (int x = 0; x < w; x++) {
+			const int fx = x * 256 / GLOW_SCALE - 128; // between sample centres
+			const int q0 = CLIP(fx >> 8, 0, _qw - 1), q1 = MIN(q0 + 1, _qw - 1);
+			const int f = fx < 0 ? 0 : (fx & 0xFF);
+			const int r = ((pr[q0] * (256 - f) + pr[q1] * f) >> 8) * GLOW_STRENGTH >> 8;
+			const int g = ((pg[q0] * (256 - f) + pg[q1] * f) >> 8) * GLOW_STRENGTH >> 8;
+			const int b = ((pb[q0] * (256 - f) + pb[q1] * f) >> 8) * GLOW_STRENGTH >> 8;
+			row[x] = ((uint32)MIN(255, r) << rs) | ((uint32)MIN(255, g) << gs) | ((uint32)MIN(255, b) << bs);
+			used = used || row[x];
+		}
+		_glowRowUsed[qy] = used;
+	}
 	return true;
+}
+
+void PostProcess::blurPlane(uint8 *plane) {
+	const int n = 2 * GLOW_RADIUS + 1;
+	// Horizontal box blur into _tmp...
+	for (int y = 0; y < _qh; y++) {
+		const uint8 *src = plane + y * _qw;
+		uint8 *dst = &_tmp[y * _qw];
+		int sum = 0;
+		for (int i = -GLOW_RADIUS; i <= GLOW_RADIUS; i++)
+			sum += src[CLIP(i, 0, _qw - 1)];
+		for (int x = 0; x < _qw; x++) {
+			dst[x] = sum / n;
+			sum += src[MIN(x + GLOW_RADIUS + 1, _qw - 1)] - src[MAX(x - GLOW_RADIUS, 0)];
+		}
+	}
+	// ...then vertical back into the plane.
+	for (int x = 0; x < _qw; x++) {
+		int sum = 0;
+		for (int i = -GLOW_RADIUS; i <= GLOW_RADIUS; i++)
+			sum += _tmp[CLIP(i, 0, _qh - 1) * _qw + x];
+		for (int y = 0; y < _qh; y++) {
+			plane[y * _qw + x] = sum / n;
+			sum += _tmp[MIN(y + GLOW_RADIUS + 1, _qh - 1) * _qw + x] - _tmp[MAX(y - GLOW_RADIUS, 0) * _qw + x];
+		}
+	}
+}
+
+void PostProcess::addGlow() {
+	const int w = _out.w;
+	for (int y = 0; y < _out.h; y++) {
+		// Between the two nearest glow rows.
+		const int fy = y * 256 / GLOW_SCALE - 128;
+		const int q0 = CLIP(fy >> 8, 0, _qh - 1), q1 = MIN(q0 + 1, _qh - 1);
+		const int f = fy < 0 ? 0 : (fy & 0xFF);
+		if (!_glowRowUsed[q0] && !_glowRowUsed[q1])
+			continue;
+		const uint32 *a = &_glowRows[q0 * w], *b = &_glowRows[q1 * w];
+		uint32 *out = static_cast<uint32 *>(_out.getBasePtr(0, y));
+		int x = 0;
+#ifdef POSTPROCESS_SSE2
+		const __m128i zero = _mm_setzero_si128();
+		const __m128i wa = _mm_set1_epi16(256 - f), wb = _mm_set1_epi16(f);
+		for (; x + 4 <= w; x += 4) {
+			const __m128i va = _mm_loadu_si128(reinterpret_cast<const __m128i *>(a + x));
+			const __m128i vb = _mm_loadu_si128(reinterpret_cast<const __m128i *>(b + x));
+			const __m128i lo = _mm_srli_epi16(_mm_add_epi16(_mm_mullo_epi16(_mm_unpacklo_epi8(va, zero), wa),
+															_mm_mullo_epi16(_mm_unpacklo_epi8(vb, zero), wb)), 8);
+			const __m128i hi = _mm_srli_epi16(_mm_add_epi16(_mm_mullo_epi16(_mm_unpackhi_epi8(va, zero), wa),
+															_mm_mullo_epi16(_mm_unpackhi_epi8(vb, zero), wb)), 8);
+			__m128i *o = reinterpret_cast<__m128i *>(out + x);
+			_mm_storeu_si128(o, _mm_adds_epu8(_mm_loadu_si128(o), _mm_packus_epi16(lo, hi)));
+		}
+#endif
+		for (; x < w; x++) {
+			uint32 res = out[x];
+			for (int sh = 0; sh < 32; sh += 8) {
+				const int v = (((a[x] >> sh) & 0xFF) * (256 - f) + ((b[x] >> sh) & 0xFF) * f) >> 8;
+				const int sum = MIN(255, (int)((res >> sh) & 0xFF) + v);
+				res = (res & ~(0xFFu << sh)) | ((uint32)sum << sh);
+			}
+			out[x] = res;
+		}
+	}
 }
 
 } // End of namespace Ultima8

@@ -43,7 +43,7 @@ using namespace CruPanel;
 static const int LIST_X = 24;
 static const int LIST_W = PANEL_W - 48;
 static const int VALUE_X = 300;
-static const int ROW_H = 27;
+static const int ROW_H = 25;
 static const int BAR_W = 200;
 
 static const uint32 COL_BAR = TEX32_PACK_RGB(40, 200, 40);
@@ -65,6 +65,7 @@ static const struct Option {
 	{ "SUBTITLES", "subtitles", OPT_TOGGLE, true, false, "ON", "OFF" },
 	{ "HD ARTWORK", "hd_scale", OPT_SCALE, true, true, "ON", "OFF" },
 	{ "SHARPEN AND COLOUR", "sharpen", OPT_TOGGLE, true, false, "ON", "OFF" },
+	{ "GLOWING LIGHTS", "glow", OPT_TOGGLE, true, false, "ON", "OFF" },
 	{ "WIDESCREEN", "widescreen", OPT_TOGGLE, true, true, "ON", "OFF" },
 	{ "MUSIC VOLUME", "music_volume", OPT_VOLUME, true, false, nullptr, nullptr },
 	{ "EFFECTS VOLUME", "sfx_volume", OPT_VOLUME, true, false, nullptr, nullptr },

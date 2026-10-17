@@ -22,12 +22,14 @@
 #ifndef ULTIMA8_GFX_RENDERSURFACE_H
 #define ULTIMA8_GFX_RENDERSURFACE_H
 
+#include "common/array.h"
 #include "graphics/managed_surface.h"
 
 namespace Ultima {
 namespace Ultima8 {
 
 class Shape;
+class ShapeFrame;
 
 //
 // RenderSurface
@@ -66,13 +68,35 @@ private:
 	Common::Rect physClip() const;
 	// Scale a region of a blit source by _scale into _scaleTemp
 	const Graphics::ManagedSurface &scaleBlitSource(const Graphics::Surface &src, const Common::Rect &srcRect);
-	// Paint an HD replacement frame if one exists. Returns true if painted.
 	//! The HD replacement for a frame, or null; palIndex returns its palette
 	const Graphics::Surface *findHD(const Shape *s, uint32 framenum, int &palIndex) const;
+	// Paint an HD replacement frame if one exists. Returns true if painted.
 	bool paintHD(const Shape *s, uint32 framenum, int32 x, int32 y, bool mirrored, uint32 highlight = 0);
 	bool paintHDTranslucent(const Shape *s, uint32 framenum, int32 x, int32 y, bool mirrored);
 
+	// Glow mask: which parts of the screen give off light (effect sprites,
+	// blinking lights), one cell per GLOW_CELL x GLOW_CELL physical pixels.
+	Common::Array<uint8> _glowMask;
+	int _glowMaskW, _glowMaskH;
+	bool _glowMarking;
+	void markGlow(const ShapeFrame *frame, int32 x, int32 y, bool mirrored);
+	void markGlowPhys(int32 px, int32 py, const Common::Rect &clip);
+
 public:
+	static const int GLOW_CELL = 4;
+
+	//! Start a new frame's glow mask (sized to the surface).
+	void clearGlowMask();
+	//! While on, painted shapes are marked as light sources in the glow mask.
+	void setGlowMarking(bool on) {
+		_glowMarking = on;
+	}
+	const Common::Array<uint8> &getGlowMask(int &w, int &h) const {
+		w = _glowMaskW;
+		h = _glowMaskH;
+		return _glowMask;
+	}
+
 	// Create a render surface
 	RenderSurface(int width, int height, const Graphics::PixelFormat &format);
 

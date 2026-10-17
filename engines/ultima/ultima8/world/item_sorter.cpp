@@ -424,6 +424,10 @@ bool ItemSorter::PaintSortItem(RenderSurface *surf, SortItem *si, bool showFootp
 
 	// Now paint us!
 	if (surf) {
+		// Crusader's effect sprites (explosions, fire, sparks, muzzle flashes)
+		// give off light; the aiming crosshair and item selector don't.
+		static const uint32 CROSSHAIR_SHAPE = 0x4CC, SELECTOR_SHAPE = 0x5a3;
+		surf->setGlowMarking(si->_sprite && si->_shapeNum != CROSSHAIR_SHAPE && si->_shapeNum != SELECTOR_SHAPE);
 		if (si->_extFlags & Item::EXT_HIGHLIGHT && si->_extFlags & Item::EXT_TRANSPARENT)
 			surf->PaintHighlightInvis(si->_shape, si->_frame, si->_sxBot, si->_syBot, si->_trans, (si->_flags & Item::FLG_FLIPPED) != 0, TRANSPARENT_COLOR);
 		if (si->_extFlags & Item::EXT_HIGHLIGHT)
@@ -434,6 +438,7 @@ bool ItemSorter::PaintSortItem(RenderSurface *surf, SortItem *si, bool showFootp
 			surf->PaintTranslucent(si->_shape, si->_frame, si->_sxBot, si->_syBot, (si->_flags & Item::FLG_FLIPPED) != 0);
 		else
 			surf->Paint(si->_shape, si->_frame, si->_sxBot, si->_syBot, (si->_flags & Item::FLG_FLIPPED) != 0);
+		surf->setGlowMarking(false);
 
 		// Draw wire frame footpads
 		if (showFootpad) {
