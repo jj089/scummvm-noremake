@@ -20,6 +20,7 @@
  */
 
 #include "ultima/ultima8/gumps/cru_save_gump.h"
+#include "ultima/ultima8/gumps/cru_panel_style.h"
 
 #include "common/config-manager.h"
 #include "common/savefile.h"
@@ -43,18 +44,13 @@ namespace Ultima8 {
 
 DEFINE_RUNTIME_CLASSTYPE_CODE(CruSaveGump)
 
+using namespace CruPanel;
+
 // Same as in savegame.cpp: Ultima 8 saves start with this, then a version.
 static const uint32 SAVEGAME_IDENT = MKTAG('V', 'M', 'U', '8');
 
-// Fonts: green and yellow terminal fonts from the HUD, large orange titles.
-static const int FONT_TEXT = 6;
-static const int FONT_HILITE = 15;
-static const int FONT_TITLE = 14;
 
-static const int PANEL_W = 600;
-static const int PANEL_H = 420;
 static const int LIST_X = 24;
-static const int LIST_Y = 64;
 static const int LIST_W = 340;
 static const int ROW_H = 28;
 static const int NAV_Y = PANEL_H - 40;
@@ -63,26 +59,6 @@ static const int THUMB_W = 192;
 static const int THUMB_H = 144;
 static const int MAX_DESC = 28;
 
-static const uint32 COL_PANEL = TEX32_PACK_RGBA(6, 10, 22, 232);
-static const uint32 COL_FRAME = TEX32_PACK_RGB(190, 24, 24);
-static const uint32 COL_FRAME_DIM = TEX32_PACK_RGB(90, 14, 14);
-static const uint32 COL_ROW = TEX32_PACK_RGBA(40, 160, 40, 70);
-static const uint32 COL_ROW_LINE = TEX32_PACK_RGB(20, 70, 20);
-static const uint32 COL_DIM = TEX32_PACK_RGBA(6, 10, 22, 150);
-
-static void drawText(RenderSurface *surf, int fontnum, const Common::String &text, int x, int y,
-					 int width = 0, Font::TextAlign align = Font::TEXT_LEFT, uint32 blend = 0) {
-	Font *font = FontManager::get_instance()->getGameFont(fontnum, true);
-	if (!font || text.empty())
-		return;
-	unsigned int remaining;
-	RenderedText *rt = font->renderText(text, remaining, width, 0, align);
-	if (blend)
-		rt->drawBlended(surf, x, y, blend);
-	else
-		rt->draw(surf, x, y);
-	delete rt;
-}
 
 CruSaveGump::CruSaveGump(bool saveMode)
 	: ModalGump(0, 0, PANEL_W, PANEL_H, 0, FLAG_DONT_SAVE), _save(saveMode), _page(0),
@@ -165,15 +141,9 @@ void CruSaveGump::loadThumbnail() {
 }
 
 void CruSaveGump::PaintThis(RenderSurface *surf, int32 lerp_factor, bool scaled) {
-	const Common::Rect32 panel(0, 0, PANEL_W, PANEL_H);
-	surf->fillBlended(COL_PANEL, panel);
-	surf->frameRect32(COL_FRAME, panel);
-	surf->frameRect32(COL_FRAME_DIM, Common::Rect32(3, 3, PANEL_W - 3, PANEL_H - 3));
-
-	drawText(surf, FONT_TITLE, _save ? "SAVE GAME" : "LOAD GAME", LIST_X, 18);
+	drawPanel(surf, _save ? "SAVE GAME" : "LOAD GAME");
 	drawText(surf, FONT_TEXT, Common::String::format("PAGE %d OF %d", _page + 1, NUM_PAGES),
 			 INFO_X, 26, PANEL_W - INFO_X - 24, Font::TEXT_RIGHT);
-	surf->drawLine32(COL_FRAME_DIM, LIST_X, LIST_Y - 8, PANEL_W - 24, LIST_Y - 8);
 
 	// Slot list
 	for (int row = 0; row < SLOTS_PER_PAGE; row++) {

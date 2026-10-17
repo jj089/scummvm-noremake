@@ -20,6 +20,8 @@
  */
 
 #include "ultima/ultima8/gumps/cru_options_gump.h"
+#include "ultima/ultima8/gumps/cru_keys_gump.h"
+#include "ultima/ultima8/gumps/cru_panel_style.h"
 
 #include "common/config-manager.h"
 #include "ultima/ultima8/gfx/fonts/font.h"
@@ -35,25 +37,15 @@ namespace Ultima8 {
 
 DEFINE_RUNTIME_CLASSTYPE_CODE(CruOptionsGump)
 
-static const int FONT_TEXT = 6;
-static const int FONT_HILITE = 15;
-static const int FONT_TITLE = 14;
+using namespace CruPanel;
 
-static const int PANEL_W = 600;
-static const int PANEL_H = 420;
+
 static const int LIST_X = 24;
-static const int LIST_Y = 64;
 static const int LIST_W = PANEL_W - 48;
 static const int VALUE_X = 300;
 static const int ROW_H = 30;
 static const int BAR_W = 200;
 
-static const uint32 COL_PANEL = TEX32_PACK_RGBA(6, 10, 22, 232);
-static const uint32 COL_FRAME = TEX32_PACK_RGB(190, 24, 24);
-static const uint32 COL_FRAME_DIM = TEX32_PACK_RGB(90, 14, 14);
-static const uint32 COL_ROW = TEX32_PACK_RGBA(40, 160, 40, 70);
-static const uint32 COL_ROW_LINE = TEX32_PACK_RGB(20, 70, 20);
-static const uint32 COL_DIM = TEX32_PACK_RGBA(6, 10, 22, 150);
 static const uint32 COL_BAR = TEX32_PACK_RGB(40, 200, 40);
 static const uint32 COL_BAR_BACK = TEX32_PACK_RGB(10, 40, 10);
 
@@ -76,26 +68,12 @@ static const struct Option {
 	{ "MUSIC VOLUME", "music_volume", OPT_VOLUME, true, false, nullptr, nullptr },
 	{ "EFFECTS VOLUME", "sfx_volume", OPT_VOLUME, true, false, nullptr, nullptr },
 	{ "SPEECH VOLUME", "speech_volume", OPT_VOLUME, true, false, nullptr, nullptr },
-	{ "CONTROLS AND KEY BINDINGS", nullptr, OPT_ACTION, false, false, nullptr, nullptr },
+	{ "CONTROLS AND KEYS", nullptr, OPT_ACTION, false, false, nullptr, nullptr },
 	{ "BACK", nullptr, OPT_ACTION, false, false, nullptr, nullptr },
 };
 static const int NUM_OPTIONS = ARRAYSIZE(OPTIONS);
 static const int OPTION_CONTROLS = NUM_OPTIONS - 2;
 static const int OPTION_BACK = NUM_OPTIONS - 1;
-
-static void drawText(RenderSurface *surf, int fontnum, const Common::String &text, int x, int y,
-					 int width = 0, Font::TextAlign align = Font::TEXT_LEFT, uint32 blend = 0) {
-	Font *font = FontManager::get_instance()->getGameFont(fontnum, true);
-	if (!font || text.empty())
-		return;
-	unsigned int remaining;
-	RenderedText *rt = font->renderText(text, remaining, width, 0, align);
-	if (blend)
-		rt->drawBlended(surf, x, y, blend);
-	else
-		rt->draw(surf, x, y);
-	delete rt;
-}
 
 static bool getOn(const Option &opt) {
 	if (opt.kind == OPT_SCALE)
@@ -126,13 +104,7 @@ void CruOptionsGump::Close(bool no_del) {
 }
 
 void CruOptionsGump::PaintThis(RenderSurface *surf, int32 lerp_factor, bool scaled) {
-	const Common::Rect32 panel(0, 0, PANEL_W, PANEL_H);
-	surf->fillBlended(COL_PANEL, panel);
-	surf->frameRect32(COL_FRAME, panel);
-	surf->frameRect32(COL_FRAME_DIM, Common::Rect32(3, 3, PANEL_W - 3, PANEL_H - 3));
-
-	drawText(surf, FONT_TITLE, "OPTIONS", LIST_X, 18);
-	surf->drawLine32(COL_FRAME_DIM, LIST_X, LIST_Y - 8, PANEL_W - 24, LIST_Y - 8);
+	drawPanel(surf, "OPTIONS");
 
 	for (int i = 0; i < NUM_OPTIONS; i++) {
 		const Option &opt = OPTIONS[i];
@@ -270,7 +242,7 @@ void CruOptionsGump::activate(int option) {
 	if (option == OPTION_BACK) {
 		Close();
 	} else if (option == OPTION_CONTROLS) {
-		Ultima8Engine::get_instance()->openConfigDialog();
+		CruKeysGump::show();
 	} else {
 		change(option, 1);
 	}
