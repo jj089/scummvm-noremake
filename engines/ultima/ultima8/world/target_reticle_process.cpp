@@ -163,6 +163,10 @@ void TargetReticleProcess::putTargetReticleOnItem(Item *item, bool only_last_fra
 	// hacked a little lower.
 	Point3 pt = item->getCentre();
 	pt.z -= 8;
+	// Aiming with the mouse: on the middle of what the player sees (the
+	// estimate above lands near the feet of people).
+	if (_mouseTargeted)
+		pt = item->getVisualCentre();
 
 	Process *p;
 	const int first_frame = _reticleStyle * 6;
@@ -200,7 +204,8 @@ void TargetReticleProcess::itemMoved(Item *item) {
 	if (spriteproc) {
 		if (_mouseTargeted) {
 			// Stays on a moving target; the pointer decides when it changes.
-			spriteproc->move(pt.x, pt.y, pt.z - 8);
+			const Point3 vc = item->getVisualCentre();
+			spriteproc->move(vc.x, vc.y, vc.z);
 		} else if (actordir != _lastTargetDir || dirtoitem != _lastTargetDir) {
 			spriteproc->terminate();
 			_reticleSpriteProcess = 0;

@@ -474,6 +474,21 @@ Point3 Item::getCentre() const {
 	return pt;
 }
 
+Point3 Item::getVisualCentre() const {
+	const Shape *shape = getShapeObject();
+	const ShapeFrame *frame = shape ? shape->getFrame(_frame) : nullptr;
+	if (!frame)
+		return getCentre();
+
+	// The frame is drawn with its (xoff, yoff) at the item's screen position.
+	// Screen y rises one pixel per z unit; screen x moves half a pixel per
+	// x unit when x and y change in opposite directions (keeping screen y).
+	const int32 cy = frame->_yoff - frame->_height / 2;
+	const int32 cx = (_flags & FLG_FLIPPED) ? frame->_xoff + 1 - frame->_width / 2
+											: frame->_width / 2 - frame->_xoff;
+	return Point3(_x + 2 * cx, _y - 2 * cx, _z + cy);
+}
+
 Box Item::getWorldBox() const {
 	int32 xd, yd, zd;
 	getFootpadWorld(xd, yd, zd);

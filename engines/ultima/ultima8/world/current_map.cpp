@@ -398,8 +398,9 @@ Item *CurrentMap::findTargetNearGumpPoint(int32 gx, int32 gy, const Point3 &came
 		if (actor && actor->isDead())
 			continue;
 
-		// Screen position of the item's centre, as in GameMapGump::GetLocationOfItem.
-		const Point3 c = item->getCentre();
+		// Screen position of the middle of the item as drawn, as in
+		// GameMapGump::GetLocationOfItem.
+		const Point3 c = item->getVisualCentre();
 		const int32 sx = (c.x - c.y) / 4 - (camera.x - camera.y) / 4;
 		const int32 sy = (c.x + c.y) / 8 - c.z - ((camera.x + camera.y) / 8 - camera.z);
 		const int32 dist = (sx - gx) * (sx - gx) + (sy - gy) * (sy - gy);

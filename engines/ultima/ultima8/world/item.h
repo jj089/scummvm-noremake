@@ -130,6 +130,10 @@ public:
 	//! is contained or equipped.
 	Point3 getCentre() const;
 
+	//! Get a world point that is drawn at the middle of the Item's current
+	//! frame on screen (falls back to getCentre without a frame).
+	Point3 getVisualCentre() const;
+
 	//! Get the size of this item's 3D bounding box, in world coordinates.
 	inline void getFootpadWorld(int32 &x, int32 &y, int32 &z) const;
 
