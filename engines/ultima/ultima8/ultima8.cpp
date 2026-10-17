@@ -585,7 +585,13 @@ Common::Error Ultima8Engine::startupGame() {
 
 	// Show the splash screen immediately now that the screen has been set up
 	_mouse->setMouseCursor(Mouse::MOUSE_NONE);
-	showSplashScreen();
+	if (GAME_IS_CRUSADER) {
+		// Present as the game itself rather than ScummVM: no Pentagram
+		// splash screen, and the game's name as the window title.
+		g_system->setWindowCaption(Common::U32String(GAME_IS_REGRET ? "Crusader: No Regret" : "Crusader: No Remorse"));
+	} else {
+		showSplashScreen();
+	}
 
 	_gameData = new GameData(_gameInfo);
 

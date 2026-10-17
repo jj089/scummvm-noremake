@@ -58,9 +58,13 @@ void SnapProcess::run() {
 			Point3 pt = controlled->getCentre();
 			if (pt.x > 0 || pt.y > 0) {
 				_currentSnapEgg = 0;
+				// Follow the actor itself. (Creating a new camera at the
+				// actor's point every tick made the view lag by zero or one
+				// tick of movement depending on process order, which shows as
+				// judder when the actor moves continuously.)
 				CameraProcess *camera = CameraProcess::GetCameraProcess();
-				if (camera->getItemNum() != controlled->getObjId())
-					CameraProcess::SetCameraProcess(new CameraProcess(pt));
+				if (!camera || camera->getItemNum() != controlled->getObjId())
+					CameraProcess::SetCameraProcess(new CameraProcess(controlled->getObjId()));
 			}
 		}
 	} else {

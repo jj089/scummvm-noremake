@@ -799,7 +799,8 @@ Animation::Sequence CruAvatarMoverProcess::fluidMoveAnim(const Actor *avatar) co
 	return Animation::walk;
 }
 
-bool CruAvatarMoverProcess::fluidTryMove(Actor *avatar, int32 dx, int32 dy, Direction dir) {
+bool CruAvatarMoverProcess::fluidTryMove(Actor *avatar, int32 dx, int32 dy, Direction dir, int32 &movedx, int32 &movedy) {
+	movedx = movedy = 0;
 	if (!dx && !dy)
 		return true;
 
@@ -824,6 +825,8 @@ bool CruAvatarMoverProcess::fluidTryMove(Actor *avatar, int32 dx, int32 dy, Dire
 				// Forced collideMove, as the animation process does, so eggs,
 				// triggers and touch events fire normally.
 				avatar->collideMove(pt.x + mv[0], pt.y + mv[1], pt.z + dz, false, true);
+				movedx = mv[0];
+				movedy = mv[1];
 				return true;
 			}
 		}
@@ -1045,9 +1048,10 @@ bool CruAvatarMoverProcess::handleFluidMovement() {
 		avatar->getMapNum() != REBEL_BASE_MAP;
 	if (firing && !avatar->isInCombat())
 		avatar->setInCombat(0);
-	// With an aim (mouse cursor or right stick), face it while moving (strafe);
-	// otherwise face the direction of travel.
-	const Direction facedir = haveAim ? aimdir : dir;
+	// Face the direction of travel, except while firing with the mouse or
+	// aiming with the right stick: then face the aim and strafe.
+	const bool strafing = mouseFire || stickAim;
+	Direction facedir = strafing ? aimdir : dir;
 
 	// The locomotion animation sets the speed of travel.
 	const Animation::Sequence moveanim = fluidMoveAnim(avatar);
@@ -1057,11 +1061,50 @@ bool CruAvatarMoverProcess::handleFluidMovement() {
 	if (!moveaction || moveaction->getSize() == 0)
 		return false;
 
+	// Average distance per animation frame for an action in a direction.
+	auto frameLength = [](const AnimAction *action, Direction d) {
+		int32 deltasum = 0;
+		for (unsigned int i = 0; i < action->getSize(); i++)
+			deltasum += ABS(action->getFrame(d, i)._deltaDir);
+		if (!deltasum)
+			return 32.0;
+		const double factorlen = sqrt((double)(Direction_XFactor(d) * Direction_XFactor(d) +
+											   Direction_YFactor(d) * Direction_YFactor(d)));
+		return MAX(1.0, 4.0 * deltasum * factorlen / action->getSize());
+	};
+
+	// Speed matches the original animation, spread over its frame repeat ticks.
+	const double speed = frameLength(moveaction, dir) / (moveaction->getFrameRepeat() + 1);
+	const double inputlen = sqrt((double)(wx * wx + wy * wy));
+	const int32 mdx = (int32)round(wx / inputlen * speed);
+	const int32 mdy = (int32)round(wy / inputlen * speed);
+
+	int32 movedx = 0, movedy = 0;
+	if (!fluidTryMove(avatar, mdx, mdy, dir, movedx, movedy)) {
+		// Blocked: stand facing the requested direction.
+		avatar->setDir(facedir);
+		_avatarAngle = avatar->isInCombat() ? Direction_ToCentidegrees(facedir) : -1;
+		stopFluidMovement(avatar);
+		_fluidMoving = true;
+		if (firing)
+			fireWhileMoving(avatar, facedir);
+		_idleTime = 0;
+		return true;
+	}
+
+	// Sliding along a wall: face the way we're actually going.
+	Direction movedir = dir;
+	if ((movedx || movedy) && (movedx != mdx || movedy != mdy)) {
+		movedir = Direction_GetWorldDir(movedy, movedx, dirmode_16dirs);
+		if (!strafing)
+			facedir = movedir;
+	}
+
 	// When strafing, show a side-step or backpedal instead of running in the
 	// facing direction, so the legs match the direction of travel.
 	Animation::Sequence visanim = moveanim;
-	if (facedir != dir && avatar->isInCombat()) {
-		const int rel = ((int)dir - (int)facedir + 16) % 16;
+	if (facedir != movedir && avatar->isInCombat()) {
+		const int rel = ((int)movedir - (int)facedir + 16) % 16;
 		Animation::Sequence strafe = moveanim;
 		if (rel >= 3 && rel <= 5)
 			strafe = Animation::slideRight;
@@ -1086,30 +1129,12 @@ bool CruAvatarMoverProcess::handleFluidMovement() {
 		_fluidDist = 0;
 	}
 
-	// Average distance per animation frame for an action in a direction.
-	auto frameLength = [](const AnimAction *action, Direction d) {
-		int32 deltasum = 0;
-		for (unsigned int i = 0; i < action->getSize(); i++)
-			deltasum += ABS(action->getFrame(d, i)._deltaDir);
-		if (!deltasum)
-			return 32.0;
-		const double factorlen = sqrt((double)(Direction_XFactor(d) * Direction_XFactor(d) +
-											   Direction_YFactor(d) * Direction_YFactor(d)));
-		return MAX(1.0, 4.0 * deltasum * factorlen / action->getSize());
-	};
-
-	// Speed matches the original animation, spread over its frame repeat ticks.
-	const double speed = frameLength(moveaction, dir) / (moveaction->getFrameRepeat() + 1);
 	const double frameLen = frameLength(visaction, facedir);
-
-	const double inputlen = sqrt((double)(wx * wx + wy * wy));
-	const int32 mdx = (int32)round(wx / inputlen * speed);
-	const int32 mdy = (int32)round(wy / inputlen * speed);
 
 	avatar->setDir(facedir);
 	_avatarAngle = avatar->isInCombat() ? Direction_ToCentidegrees(facedir) : -1;
 
-	if (fluidTryMove(avatar, mdx, mdy, dir)) {
+	{
 		_fluidDist += (int32)(speed * 256);
 		while (_fluidDist >= (int32)(frameLen * 256)) {
 			_fluidDist -= (int32)(frameLen * 256);
@@ -1129,10 +1154,6 @@ bool CruAvatarMoverProcess::handleFluidMovement() {
 			avatar->clearFlag(Item::FLG_FLIPPED);
 		avatar->setAnimFrame(_fluidFrame);
 		avatar->setLastAnim(visanim);
-		_fluidMoving = true;
-	} else {
-		// Blocked: stand facing the requested direction.
-		stopFluidMovement(avatar);
 		_fluidMoving = true;
 	}
 

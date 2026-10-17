@@ -378,6 +378,9 @@ public:
 	bool isInterpolationEnabled() const {
 		return _interpolate;
 	}
+	int32 getLerpFactor() const {
+		return _lerpFactor;
+	}
 };
 
 } // End of namespace Ultima8

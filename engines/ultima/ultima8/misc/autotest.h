@@ -40,6 +40,7 @@ namespace Ultima8 {
  *   rstick <x> <y>            - set the right analog stick position
  *   log [label]               - write avatar state to the debug log
  *   logevery <ms>             - also log avatar state periodically (0 = off)
+ *   logframes on|off          - log avatar/camera draw positions every painted frame
  *   shot <path>               - save the current screen as PNG
  *   god                       - make the avatar invincible
  *   movie <name>              - play a Crusader movie (e.g. 01A)
@@ -62,6 +63,7 @@ private:
 	uint32 _waitUntil;
 	uint32 _logEvery;
 	uint32 _nextLog;
+	bool _logFrames;
 };
 
 } // End of namespace Ultima8

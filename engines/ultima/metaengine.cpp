@@ -167,7 +167,7 @@ static const ADExtraGuiOptionsMap optionsList[] = {
 			_s("Always enable Christmas easter-egg"),
 			_s("Enable the Christmas music at any time of year."),
 			"always_christmas",
-			true,
+			false,
 			0,
 			0
 		}

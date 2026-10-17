@@ -68,7 +68,7 @@ static const struct {
 	{ "N", Common::KEYCODE_n, 'n' },
 };
 
-AutoTest::AutoTest() : _pc(0), _waitUntil(0), _logEvery(0), _nextLog(0) {
+AutoTest::AutoTest() : _pc(0), _waitUntil(0), _logEvery(0), _nextLog(0), _logFrames(false) {
 }
 
 bool AutoTest::loadScript(const Common::String &path) {
@@ -91,6 +91,19 @@ bool AutoTest::loadScript(const Common::String &path) {
 
 void AutoTest::update() {
 	const uint32 now = g_system->getMillis();
+	if (_logFrames) {
+		// Per painted frame: where the avatar and camera were drawn.
+		const MainActor *av = getMainActor();
+		CameraProcess *cam = CameraProcess::GetCameraProcess();
+		if (av && cam) {
+			const int32 lerp = Ultima8Engine::get_instance()->getLerpFactor();
+			const Point3 a = av->getLerped();
+			const Point3 c = cam->GetLerped(lerp, true);
+			debug("frame: t=%u frameNum=%u lerp=%d avatar=%d,%d cam=%d,%d rel_sx=%d rel_sy=%d",
+				  now, Kernel::get_instance()->getFrameNum(), lerp, a.x, a.y, c.x, c.y,
+				  ((a.x - a.y) - (c.x - c.y)) / 4, ((a.x + a.y) - (c.x + c.y)) / 8);
+		}
+	}
 	if (_logEvery && now >= _nextLog) {
 		logAvatar("tick");
 		_nextLog = now + _logEvery;
@@ -198,6 +211,8 @@ void AutoTest::execute(const Common::String &line) {
 		}
 	} else if (cmd == "log") {
 		logAvatar(tok.empty() ? "log" : tok.nextToken());
+	} else if (cmd == "logframes") {
+		_logFrames = (tok.nextToken() == "on");
 	} else if (cmd == "logevery") {
 		_logEvery = atoi(tok.nextToken().c_str());
 		_nextLog = 0;

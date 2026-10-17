@@ -205,10 +205,16 @@ Point3 CameraProcess::GetLerped(int32 factor, bool noupdate) {
 
 			bool inBetween = true;
 
-			if (_lastFrameNum != _elapsed) {
+			// Track painted frames with the kernel frame number, as items do
+			// in setupLerp. (_elapsed counts process runs, which happen twice
+			// per frame in Crusader, so every frame looked like a missed one:
+			// the camera snapped to its end point and then lerped backwards,
+			// making the screen judder against moving items.)
+			const int32 frameNum = static_cast<int32>(Kernel::get_instance()->getFrameNum());
+			if (_lastFrameNum != frameNum) {
 				// No lerping if we missed a frame
-				if ((_elapsed - _lastFrameNum) > 1) factor = 256;
-				_lastFrameNum = _elapsed;
+				if ((frameNum - _lastFrameNum) > 1) factor = 256;
+				_lastFrameNum = frameNum;
 				inBetween = false;
 			}
 

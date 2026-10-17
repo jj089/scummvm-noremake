@@ -103,7 +103,8 @@ private:
 	bool handleFluidMovement();
 	void stopFluidMovement(Actor *avatar);
 	Animation::Sequence fluidMoveAnim(const Actor *avatar) const;
-	bool fluidTryMove(Actor *avatar, int32 dx, int32 dy, Direction dir);
+	//! Move by (dx, dy), sliding along walls if needed. Reports the move made.
+	bool fluidTryMove(Actor *avatar, int32 dx, int32 dy, Direction dir, int32 &movedx, int32 &movedy);
 	//! World direction from the avatar to the mouse cursor. False if unavailable.
 	bool getMouseAimDir(const Actor *avatar, Direction &dir) const;
 	//! Run-and-gun: fire the active weapon without stopping for the attack animation.
