@@ -67,7 +67,21 @@ static const struct {
 	{ "SPACE", Common::KEYCODE_SPACE, ' ' },
 	{ "Y", Common::KEYCODE_y, 'y' },
 	{ "N", Common::KEYCODE_n, 'n' },
+	{ "UP", Common::KEYCODE_UP, 0 },
+	{ "DOWN", Common::KEYCODE_DOWN, 0 },
+	{ "LEFT", Common::KEYCODE_LEFT, 0 },
+	{ "RIGHT", Common::KEYCODE_RIGHT, 0 },
+	{ "BACKSPACE", Common::KEYCODE_BACKSPACE, Common::ASCII_BACKSPACE },
 };
+
+static void pushKey(Common::KeyCode code, uint16 ascii) {
+	Common::Event ev;
+	ev.type = Common::EVENT_KEYDOWN;
+	ev.kbd = Common::KeyState(code, ascii);
+	g_system->getEventManager()->pushEvent(ev);
+	ev.type = Common::EVENT_KEYUP;
+	g_system->getEventManager()->pushEvent(ev);
+}
 
 AutoTest::AutoTest() : _pc(0), _waitUntil(0), _logEvery(0), _nextLog(0), _logFrames(false) {
 }
@@ -169,16 +183,20 @@ void AutoTest::execute(const Common::String &line) {
 		const Common::String name = tok.nextToken();
 		for (const auto &k : AUTOTEST_KEYS) {
 			if (name == k.name) {
-				Common::Event ev;
-				ev.type = Common::EVENT_KEYDOWN;
-				ev.kbd = Common::KeyState(k.code, k.ascii);
-				g_system->getEventManager()->pushEvent(ev);
-				ev.type = Common::EVENT_KEYUP;
-				g_system->getEventManager()->pushEvent(ev);
+				pushKey(k.code, k.ascii);
 				return;
 			}
 		}
 		warning("autotest: unknown key %s", name.c_str());
+	} else if (cmd == "type") {
+		// Type the rest of the line as key presses ('_' types a space).
+		const Common::String text = tok.nextToken();
+		for (char c : text) {
+			if (c == '_')
+				c = ' ';
+			const char lower = (c >= 'A' && c <= 'Z') ? c - 'A' + 'a' : c;
+			pushKey(static_cast<Common::KeyCode>(lower), c);
+		}
 	} else if (cmd == "rstick") {
 		// Simulate the right analog stick (-32768..32767 per axis).
 		Common::Event ev;

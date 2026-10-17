@@ -497,6 +497,8 @@ MODULE_OBJS += \
 	ultima8/gumps/cru_health_gump.o \
 	ultima8/gumps/cru_inventory_gump.o \
 	ultima8/gumps/cru_menu_gump.o \
+	ultima8/gumps/cru_options_gump.o \
+	ultima8/gumps/cru_save_gump.o \
 	ultima8/gumps/cru_pickup_area_gump.o \
 	ultima8/gumps/cru_pickup_gump.o \
 	ultima8/gumps/cru_stat_gump.o \

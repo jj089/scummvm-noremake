@@ -30,6 +30,8 @@
 #include "ultima/ultima8/gfx/palette_manager.h"
 #include "ultima/ultima8/gfx/shape.h"
 #include "ultima/ultima8/gfx/shape_frame.h"
+#include "ultima/ultima8/gumps/cru_options_gump.h"
+#include "ultima/ultima8/gumps/cru_save_gump.h"
 #include "ultima/ultima8/gumps/quit_gump.h"
 #include "ultima/ultima8/gumps/widgets/button_widget.h"
 #include "ultima/ultima8/kernel/mouse.h"
@@ -202,17 +204,14 @@ void CruMenuGump::selectEntry(int entry) {
 		break;
 	}
 	case 2:
-		Ultima8Engine::get_instance()->loadGameDialog();
+		CruSaveGump::show(false);
 		break;
 	case 3: // Load/Save Game
-		Ultima8Engine::get_instance()->saveGameDialog();
+		CruSaveGump::show(true);
 		break;
-	case 4: {
-		// Options - show the ScummVM options dialog
-		GUI::ConfigDialog dlg;
-		dlg.runModal();
-	}
-	break;
+	case 4:
+		CruOptionsGump::show();
+		break;
 	case 5: { // Credits
 		CruGame *game = dynamic_cast<CruGame *>(Game::get_instance());
 		assert(game);

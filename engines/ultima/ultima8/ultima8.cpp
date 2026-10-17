@@ -44,6 +44,7 @@
 #include "ultima/ultima8/gfx/cycle_process.h"
 #include "ultima/ultima8/gfx/fonts/font_manager.h"
 #include "ultima/ultima8/gfx/render_surface.h"
+#include "ultima/ultima8/gumps/cru_save_gump.h"
 #include "ultima/ultima8/gumps/game_map_gump.h"
 #include "ultima/ultima8/gumps/inverter_gump.h"
 #include "ultima/ultima8/gumps/menu_gump.h"
@@ -1007,10 +1008,16 @@ void Ultima8Engine::handleActionDown(KeybindingAction action) {
 		}
 		break;
 	case ACTION_SAVE:
-		saveGameDialog();
+		if (GAME_IS_CRUSADER)
+			CruSaveGump::show(true);
+		else
+			saveGameDialog();
 		break;
 	case ACTION_LOAD:
-		loadGameDialog();
+		if (GAME_IS_CRUSADER)
+			CruSaveGump::show(false);
+		else
+			loadGameDialog();
 		break;
 	case ACTION_BEDROLL:
 		if (!isAvatarInStasis()) {
