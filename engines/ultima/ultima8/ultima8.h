@@ -69,6 +69,7 @@ private:
 
 	bool _isRunning;
 	AutoTest *_autoTest;
+	int _renderScale;
 	GameInfo *_gameInfo;
 	const UltimaGameDescription *_gameDescription;
 
@@ -190,6 +191,11 @@ public:
 
 	RenderSurface *getRenderScreen() {
 		return _screen;
+	}
+
+	//! Physical pixels per logical pixel on the screen surface ("hd_scale").
+	int getRenderScale() const {
+		return _renderScale;
 	}
 
 	Graphics::Screen *getScreen() const;

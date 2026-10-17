@@ -53,15 +53,33 @@ private:
 	Graphics::ManagedSurface *_surface;
 	DisposeAfterUse::Flag _disposeAfterUse;
 
+	// Render scale: the physical surface is _scale times the logical size.
+	// All coordinates passed to this class are logical.
+	int _scale;
+	// Scratch surface for scaling blit sources
+	Graphics::ManagedSurface _scaleTemp;
+
 	// Update the Pixels Pointer
 	void SetPixelsPointer();
+
+	// Clipping window in physical pixels
+	Common::Rect physClip() const;
+	// Scale a region of a blit source by _scale into _scaleTemp
+	const Graphics::ManagedSurface &scaleBlitSource(const Graphics::Surface &src, const Common::Rect &srcRect);
+	// Paint an HD replacement frame if one exists. Returns true if painted.
+	bool paintHD(const Shape *s, uint32 framenum, int32 x, int32 y, bool mirrored);
 
 public:
 	// Create a render surface
 	RenderSurface(int width, int height, const Graphics::PixelFormat &format);
 
-	// Create from a managed surface
-	RenderSurface(Graphics::ManagedSurface *s, DisposeAfterUse::Flag disposeAfterUse = DisposeAfterUse::YES);
+	// Create from a managed surface. With scale > 1 the surface is scale times
+	// larger than the logical coordinate space used for drawing.
+	RenderSurface(Graphics::ManagedSurface *s, DisposeAfterUse::Flag disposeAfterUse = DisposeAfterUse::YES, int scale = 1);
+
+	int getScale() const {
+		return _scale;
+	}
 
 	~RenderSurface();
 

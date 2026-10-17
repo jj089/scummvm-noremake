@@ -579,7 +579,23 @@ void Mouse::update() {
 
 			if (frame >= 0 && (uint)frame < mouse->frameCount()) {
 				const ShapeFrame *f = mouse->getFrame(frame);
-				CursorMan.replaceCursor(f->getSurface(), f->_xoff, f->_yoff, f->_keycolor);
+				const int scale = Ultima8Engine::get_instance()->getRenderScale();
+				if (scale > 1) {
+					// Scale the cursor to match the scaled screen.
+					const Graphics::Surface &src = f->getSurface();
+					Graphics::Surface scaled;
+					scaled.create(src.w * scale, src.h * scale, src.format);
+					for (int y = 0; y < scaled.h; y++) {
+						const uint8 *srow = static_cast<const uint8 *>(src.getBasePtr(0, y / scale));
+						uint8 *drow = static_cast<uint8 *>(scaled.getBasePtr(0, y));
+						for (int x = 0; x < scaled.w; x++)
+							drow[x] = srow[x / scale];
+					}
+					CursorMan.replaceCursor(scaled, f->_xoff * scale, f->_yoff * scale, f->_keycolor);
+					scaled.free();
+				} else {
+					CursorMan.replaceCursor(f->getSurface(), f->_xoff, f->_yoff, f->_keycolor);
+				}
 				CursorMan.replaceCursorPalette(mouse->getPalette()->data(), 0, 256);
 				CursorMan.showMouse(true);
 			} else {

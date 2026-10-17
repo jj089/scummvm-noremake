@@ -175,15 +175,17 @@ void AutoTest::execute(const Common::String &line) {
 		Common::Event ev;
 		int32 mx, my;
 		Mouse::get_instance()->getMouseCoords(mx, my);
-		ev.mouse.x = mx;
-		ev.mouse.y = my;
+		const int scale = engine->getRenderScale();
+		ev.mouse.x = mx * scale;
+		ev.mouse.y = my * scale;
 		ev.type = (cmd == "mousedown") ? Common::EVENT_LBUTTONDOWN : Common::EVENT_LBUTTONUP;
 		g_system->getEventManager()->pushEvent(ev);
 	} else if (cmd == "click" || cmd == "mousemove") {
 		// Coordinates are in game screen pixels (640x480 for Crusader).
 		Common::Event ev;
-		ev.mouse.x = atoi(tok.nextToken().c_str());
-		ev.mouse.y = atoi(tok.nextToken().c_str());
+		const int scale = engine->getRenderScale();
+		ev.mouse.x = atoi(tok.nextToken().c_str()) * scale;
+		ev.mouse.y = atoi(tok.nextToken().c_str()) * scale;
 		ev.type = Common::EVENT_MOUSEMOVE;
 		g_system->warpMouse(ev.mouse.x, ev.mouse.y);
 		g_system->getEventManager()->pushEvent(ev);

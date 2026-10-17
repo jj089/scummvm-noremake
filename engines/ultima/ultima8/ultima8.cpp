@@ -32,6 +32,7 @@
 #include "graphics/surface.h"
 #include "video/avi_decoder.h"
 #include "ultima/ultima8/misc/autotest.h"
+#include "ultima/ultima8/gfx/hd_shape_cache.h"
 #include "ultima/ultima.h"
 #include "ultima/ultima8/audio/audio_mixer.h"
 #include "ultima/ultima8/audio/cru_music_process.h"
@@ -122,7 +123,7 @@ Ultima8Engine *Ultima8Engine::_instance = nullptr;
 
 Ultima8Engine::Ultima8Engine(OSystem *syst, const Ultima::UltimaGameDescription *gameDesc) :
 		Engine(syst), _gameDescription(gameDesc), _randomSource("Ultima8"),
-		_isRunning(false), _autoTest(nullptr), _gameInfo(nullptr),
+		_isRunning(false), _autoTest(nullptr), _renderScale(1), _gameInfo(nullptr),
 		_configFileMan(nullptr), _saveCount(0), _game(nullptr), _lastError(Common::kNoError),
 		_kernel(nullptr), _objectManager(nullptr), _mouse(nullptr), _ucMachine(nullptr),
 		_screen(nullptr), _fontManager(nullptr), _paletteManager(nullptr), _gameData(nullptr),
@@ -139,6 +140,7 @@ Ultima8Engine::Ultima8Engine(OSystem *syst, const Ultima::UltimaGameDescription 
 
 Ultima8Engine::~Ultima8Engine() {
 	delete _autoTest;
+	HDShapeCache::destroyInstance();
 	delete _kernel;
 	delete _objectManager;
 	delete _audioMixer;
@@ -570,6 +572,11 @@ Common::Error Ultima8Engine::startupGame() {
 		ConfMan.registerDefault("height", _highRes ? CRUSADER_HIRES_SCREEN_HEIGHT : CRUSADER_DEFAULT_SCREEN_HEIGHT);
 	}
 
+	// Render scale: draw at a multiple of the game's resolution, using HD
+	// replacement art where available (hdshapes/ in the game directory).
+	if (GAME_IS_CRUSADER && ConfMan.hasKey("hd_scale"))
+		_renderScale = CLIP(ConfMan.getInt("hd_scale"), 1, 4);
+
 	int width = ConfMan.getInt("width");
 	int height = ConfMan.getInt("height");
 	Common::Error err = changeVideoMode(width, height);
@@ -803,7 +810,7 @@ Common::Error Ultima8Engine::changeVideoMode(int width, int height) {
 	// Set Screen Resolution
 	debug(1, "Setting Video Mode %dx%d...", width, height);
 
-	initGraphics(width, height, nullptr);
+	initGraphics(width * _renderScale, height * _renderScale, nullptr);
 
 	Graphics::PixelFormat format = g_system->getScreenFormat();
 	if (format.bytesPerPixel != 2 && format.bytesPerPixel != 4) {
@@ -813,9 +820,9 @@ Common::Error Ultima8Engine::changeVideoMode(int width, int height) {
 	if (_screen)
 		delete _screen;
 
-	// Set up blitting surface
-	Graphics::ManagedSurface *surface = new Graphics::Screen(width, height, format);
-	_screen = new RenderSurface(surface);
+	// Set up blitting surface (logical size width x height, physically scaled)
+	Graphics::ManagedSurface *surface = new Graphics::Screen(width * _renderScale, height * _renderScale, format);
+	_screen = new RenderSurface(surface, DisposeAfterUse::YES, _renderScale);
 
 	if (!_paletteManager) {
 		_paletteManager = new PaletteManager(format);
@@ -884,7 +891,7 @@ void Ultima8Engine::handleEvent(const Common::Event &event) {
 		break;
 
 	case Common::EVENT_MOUSEMOVE:
-		_mouse->setMouseCoords(event.mouse.x, event.mouse.y);
+		_mouse->setMouseCoords(event.mouse.x / getRenderScale(), event.mouse.y / getRenderScale());
 		break;
 	case Common::EVENT_JOYAXIS_MOTION: {
 		CruAvatarMoverProcess *cruMover = dynamic_cast<CruAvatarMoverProcess *>(_avatarMoverProcess);
@@ -902,7 +909,7 @@ void Ultima8Engine::handleEvent(const Common::Event &event) {
 		else if (event.type == Common::EVENT_MBUTTONDOWN)
 			button = Mouse::BUTTON_MIDDLE;
 
-		_mouse->setMouseCoords(event.mouse.x, event.mouse.y);
+		_mouse->setMouseCoords(event.mouse.x / getRenderScale(), event.mouse.y / getRenderScale());
 		_mouse->buttonDown(button);
 		break;
 	}
@@ -916,7 +923,7 @@ void Ultima8Engine::handleEvent(const Common::Event &event) {
 		else if (event.type == Common::EVENT_MBUTTONUP)
 			button = Mouse::BUTTON_MIDDLE;
 
-		_mouse->setMouseCoords(event.mouse.x, event.mouse.y);
+		_mouse->setMouseCoords(event.mouse.x / getRenderScale(), event.mouse.y / getRenderScale());
 		_mouse->buttonUp(button);
 		break;
 	}

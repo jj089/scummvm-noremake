@@ -458,6 +458,7 @@ MODULE_OBJS += \
 	ultima8/gfx/frame_id.o \
 	ultima8/gfx/fade_to_modal_process.o \
 	ultima8/gfx/gump_shape_archive.o \
+	ultima8/gfx/hd_shape_cache.o \
 	ultima8/gfx/inverter_process.o \
 	ultima8/gfx/main_shape_archive.o \
 	ultima8/gfx/palette.o \
