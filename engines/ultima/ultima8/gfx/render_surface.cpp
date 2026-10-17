@@ -871,6 +871,117 @@ void inline paintHDLogic(uint8 *pixels, int32 pitch, const Common::Rect &clipWin
 	}
 }
 
+// HD version of translucent drawing (glows, beams, force fields). Pixels whose
+// original palette entry has a blend colour keep that see-through tint, with
+// the HD pixel's brightness relative to the original adding the detail; other
+// pixels are drawn like normal HD art.
+template<typename uintX>
+static void paintHDTranslucentLogic(uint8 *pixels, int32 pitch, const Common::Rect &clipWindow,
+									const Graphics::PixelFormat &format, const Graphics::Surface &hd,
+									const ShapeFrame *frame, int scale, int32 left, int32 top, bool mirrored,
+									const uint32 *map, const uint32 *xform) {
+	Common::Rect dst(left, top, left + hd.w, top + hd.h);
+	Common::Rect clipped = dst;
+	clipped.clip(clipWindow);
+	if (clipped.isEmpty())
+		return;
+	const Graphics::Surface &orig = frame->getSurface();
+
+	for (int y = clipped.top; y < clipped.bottom; y++) {
+		const uint32 *hrow = static_cast<const uint32 *>(hd.getBasePtr(0, y - dst.top));
+		const uint8 *orow = static_cast<const uint8 *>(orig.getBasePtr(0, (y - dst.top) / scale));
+		uintX *drow = reinterpret_cast<uintX *>(pixels + y * pitch);
+		for (int x = clipped.left; x < clipped.right; x++) {
+			const int hx = mirrored ? (dst.right - 1 - x) : (x - dst.left);
+			const uint32 argb = hrow[hx];
+			const uint32 a = argb >> 24;
+			if (!a)
+				continue;
+			const int r = (argb >> 16) & 0xFF, g = (argb >> 8) & 0xFF, b = argb & 0xFF;
+			uint8 dr, dg, db;
+			format.colorToRGB(drow[x], dr, dg, db);
+
+			const uint8 idx = orow[hx / scale];
+			int nr, ng, nb;
+			if (idx != frame->_keycolor && xform[idx]) {
+				const uint32 val = xform[idx];
+				uint8 pr, pg, pb;
+				format.colorToRGB(map[idx], pr, pg, pb);
+				// Detail factor in 1/256ths, kept within half to double.
+				const int k = CLIP((r + g + b + 24) * 256 / (pr + pg + pb + 24), 128, 512);
+				const int ia = 256 - TEX32_A(val);
+				nr = MIN(255, (int)(dr * ia + TEX32_R(val) * k) >> 8);
+				ng = MIN(255, (int)(dg * ia + TEX32_G(val) * k) >> 8);
+				nb = MIN(255, (int)(db * ia + TEX32_B(val) * k) >> 8);
+			} else {
+				nr = r;
+				ng = g;
+				nb = b;
+			}
+			if (a != 0xFF) {
+				nr = (nr * a + dr * (255 - a)) / 255;
+				ng = (ng * a + dg * (255 - a)) / 255;
+				nb = (nb * a + db * (255 - a)) / 255;
+			}
+			drow[x] = static_cast<uintX>(format.RGBToColor(nr, ng, nb));
+		}
+	}
+}
+
+// Pixels of a frame using the colour-cycling palette entries (blinking lights,
+// screens). HD art has them frozen at one colour, so they're drawn again on
+// top, scaled, with the current palette.
+static const uint8 CYCLE_FIRST = 8, CYCLE_LAST = 14;
+struct CyclePixels {
+	const void *_srcPixels;
+	Common::Array<uint32> _pixels; // x | y << 12 | index << 24
+};
+typedef Common::HashMap<const ShapeFrame *, CyclePixels, ShapeFramePtrHash> CyclePixelMap;
+static CyclePixelMap *_cyclePixels = nullptr;
+
+static const Common::Array<uint32> &getCyclePixels(const ShapeFrame *frame) {
+	if (!_cyclePixels)
+		_cyclePixels = new CyclePixelMap();
+	const Graphics::Surface &src = frame->getSurface();
+	CyclePixelMap::iterator it = _cyclePixels->find(frame);
+	if (it != _cyclePixels->end() && it->_value._srcPixels == src.getPixels())
+		return it->_value._pixels;
+
+	CyclePixels &entry = (*_cyclePixels)[frame];
+	entry._srcPixels = src.getPixels();
+	entry._pixels.clear();
+	for (int y = 0; y < src.h; y++) {
+		const uint8 *row = static_cast<const uint8 *>(src.getBasePtr(0, y));
+		for (int x = 0; x < src.w; x++) {
+			if (row[x] >= CYCLE_FIRST && row[x] <= CYCLE_LAST && row[x] != frame->_keycolor)
+				entry._pixels.push_back(x | (y << 12) | (row[x] << 24));
+		}
+	}
+	if (!entry._pixels.empty())
+		debug(2, "HD: %u colour-cycling pixels drawn over a %dx%d frame", entry._pixels.size(), src.w, src.h);
+	return entry._pixels;
+}
+
+template<typename uintX>
+static void paintCyclePixels(uint8 *pixels, int32 pitch, const Common::Rect &clipWindow,
+							 const Common::Array<uint32> &cycle, int frameWidth, int32 left, int32 top,
+							 int scale, bool mirrored, const uint32 *map) {
+	for (const uint32 p : cycle) {
+		int x = p & 0xFFF;
+		const int y = (p >> 12) & 0xFFF;
+		if (mirrored)
+			x = frameWidth - 1 - x;
+		Common::Rect r(left + x * scale, top + y * scale, left + (x + 1) * scale, top + (y + 1) * scale);
+		r.clip(clipWindow);
+		const uintX col = static_cast<uintX>(map[p >> 24]);
+		for (int py = r.top; py < r.bottom; py++) {
+			uintX *row = reinterpret_cast<uintX *>(pixels + py * pitch);
+			for (int px = r.left; px < r.right; px++)
+				row[px] = col;
+		}
+	}
+}
+
 template<typename uintX>
 void inline paintLogic(uint8 *pixels, int32 pitch,
 					   const Common::Rect &clipWindow,
@@ -1158,22 +1269,22 @@ void inline paintBlendedLogic(uint8 *pixels, int32 pitch,
 //
 // Desc: Standard shape drawing functions. Clips but doesn't do anything else
 //
-bool RenderSurface::paintHD(const Shape *s, uint32 framenum, int32 x, int32 y, bool mirrored, uint32 highlight) {
+const Graphics::Surface *RenderSurface::findHD(const Shape *s, uint32 framenum, int &palIndex) const {
+	palIndex = -1;
 	if (_scale != HDShapeCache::HD_SCALE)
-		return false;
+		return nullptr;
 	HDShapeCache *cache = HDShapeCache::get_instance();
 	if (!cache->hasAny())
-		return false;
+		return nullptr;
 
 	// HD art is made per palette; find which one this shape is drawn with.
 	// Shapes using any other palette keep their original pixels.
 	PaletteManager *pm = PaletteManager::get_instance();
 	if (!pm)
-		return false;
+		return nullptr;
 	static const PaletteManager::PalIndex HD_PALETTES[] = {
 		PaletteManager::Pal_Game, PaletteManager::Pal_Misc, PaletteManager::Pal_Diff
 	};
-	int palIndex = -1;
 	for (const PaletteManager::PalIndex p : HD_PALETTES) {
 		if (s->getPalette() == pm->getPalette(p)) {
 			palIndex = p;
@@ -1181,7 +1292,7 @@ bool RenderSurface::paintHD(const Shape *s, uint32 framenum, int32 x, int32 y, b
 		}
 	}
 	if (palIndex < 0)
-		return false;
+		return nullptr;
 
 	uint16 flexId;
 	uint32 shapenum;
@@ -1191,27 +1302,49 @@ bool RenderSurface::paintHD(const Shape *s, uint32 framenum, int32 x, int32 y, b
 	if (flexId == GameData::OTHER) {
 		FontShapeArchive *fonts = GameData::get_instance()->getFonts();
 		if (!fonts || shapenum >= fonts->getCount() || fonts->getShape(shapenum) != s)
-			return false;
+			return nullptr;
 		flexId = HDShapeCache::FONTS_FLEX;
 	}
 	const Graphics::Surface *hd = cache->getFrame(flexId, shapenum, framenum, palIndex);
 	const ShapeFrame *frame = s->getFrame(framenum);
 	if (!hd || !frame)
-		return false;
+		return nullptr;
 	if (hd->w != frame->_width * _scale || hd->h != frame->_height * _scale) {
 		debug(1, "HD frame %d:%u/%u size %dx%d doesn't match %dx%d", flexId, shapenum, framenum,
 			  hd->w, hd->h, frame->_width * _scale, frame->_height * _scale);
-		return false;
+		return nullptr;
 	}
+	return hd;
+}
+
+bool RenderSurface::paintHD(const Shape *s, uint32 framenum, int32 x, int32 y, bool mirrored, uint32 highlight) {
+	int palIndex;
+	const Graphics::Surface *hd = findHD(s, framenum, palIndex);
+	if (!hd)
+		return false;
+	const ShapeFrame *frame = s->getFrame(framenum);
 
 	const int32 top = (y - frame->_yoff) * _scale;
 	const int32 left = mirrored ? (x + frame->_xoff + 1) * _scale - hd->w : (x - frame->_xoff) * _scale;
-	if (_surface->format.bytesPerPixel == 4)
+	// Only the game palette cycles colours; highlighted drawing keeps its tint.
+	const Common::Array<uint32> *cycle = nullptr;
+	if (palIndex == PaletteManager::Pal_Game && !highlight) {
+		cycle = &getCyclePixels(frame);
+		if (cycle->empty())
+			cycle = nullptr;
+	}
+	const uint32 *map = s->getPalette()->_native;
+	if (_surface->format.bytesPerPixel == 4) {
 		paintHDLogic<uint32>(_pixels, _pitch, physClip(), _surface->format, *hd, left, top, mirrored, s->getPalette(), highlight);
-	else if (_surface->format.bytesPerPixel == 2)
+		if (cycle)
+			paintCyclePixels<uint32>(_pixels, _pitch, physClip(), *cycle, frame->_width, left, top, _scale, mirrored, map);
+	} else if (_surface->format.bytesPerPixel == 2) {
 		paintHDLogic<uint16>(_pixels, _pitch, physClip(), _surface->format, *hd, left, top, mirrored, s->getPalette(), highlight);
-	else
+		if (cycle)
+			paintCyclePixels<uint16>(_pixels, _pitch, physClip(), *cycle, frame->_width, left, top, _scale, mirrored, map);
+	} else {
 		return false;
+	}
 	return true;
 }
 
@@ -1243,9 +1376,31 @@ void RenderSurface::Paint(const Shape *s, uint32 framenum, int32 x, int32 y, boo
 //
 // Desc: Standard shape drawing functions. Clips and XForms
 //
+bool RenderSurface::paintHDTranslucent(const Shape *s, uint32 framenum, int32 x, int32 y, bool mirrored) {
+	int palIndex;
+	const Graphics::Surface *hd = findHD(s, framenum, palIndex);
+	const uint32 *xform = s->getPalette()->_xform;
+	if (!hd || !xform)
+		return false;
+	const ShapeFrame *frame = s->getFrame(framenum);
+	const int32 top = (y - frame->_yoff) * _scale;
+	const int32 left = mirrored ? (x + frame->_xoff + 1) * _scale - hd->w : (x - frame->_xoff) * _scale;
+	const uint32 *map = s->getPalette()->_native;
+	if (_surface->format.bytesPerPixel == 4)
+		paintHDTranslucentLogic<uint32>(_pixels, _pitch, physClip(), _surface->format, *hd, frame, _scale, left, top, mirrored, map, xform);
+	else if (_surface->format.bytesPerPixel == 2)
+		paintHDTranslucentLogic<uint16>(_pixels, _pitch, physClip(), _surface->format, *hd, frame, _scale, left, top, mirrored, map, xform);
+	else
+		return false;
+	return true;
+}
+
 void RenderSurface::PaintTranslucent(const Shape *s, uint32 framenum, int32 x, int32 y, bool mirrored) {
 	const ShapeFrame *frame = s->getFrame(framenum);
 	if (!frame || !s->getPalette())
+		return;
+
+	if (paintHDTranslucent(s, framenum, x, y, mirrored))
 		return;
 
 	const FrameSrc fs = makeFrameSrc(frame, _scale, mirrored, x, y);
