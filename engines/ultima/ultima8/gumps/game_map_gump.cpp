@@ -240,13 +240,19 @@ bool GameMapGump::GetLocationOfItem(uint16 itemid, int32 &gx, int32 &gy,
 		return false;
 
 	Point3 i;
-	if (item->hasFlags(Item::FLG_FASTAREA) && !Ultima8Engine::get_instance()->isInterpolationEnabled()) {
-		// Without interpolation items are drawn at their current location.
-		// Don't set up the lerp here: this is called during process ticks
+	if (item->hasFlags(Item::FLG_FASTAREA)) {
+		// Fast-area items have their lerp set up when the map is painted.
+		// Don't set it up here: this is called during process ticks
 		// (crosshair, target reticle...), and setting it up mid-frame froze
 		// the item's draw position for the rest of the frame, so a moving
 		// avatar was sometimes drawn a tick behind the camera.
-		i = item->getLocation();
+		if (Ultima8Engine::get_instance()->isInterpolationEnabled()) {
+			Item *nonconst = const_cast<Item *>(item);
+			nonconst->doLerp(lerp_factor);
+			i = item->getLerped();
+		} else {
+			i = item->getLocation();
+		}
 	} else {
 		// Hacks be us. Force the item into the fast area
 		item->setupLerp(Kernel::get_instance()->getFrameNum());
