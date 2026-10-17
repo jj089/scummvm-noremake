@@ -80,6 +80,9 @@ public:
 	void removeTargetItem(const Item *item);
 	//! Find the best target item in the given direction from the given start point.
 	Item *findBestTargetItem(int32 x, int32 y, int32 z, Direction dir, DirectionMode dirmode);
+	//! Find the target nearest a point on the game map gump (for mouse aiming):
+	//! living NPCs within npcRange pixels first, then other targets within itemRange.
+	Item *findTargetNearGumpPoint(int32 gx, int32 gy, const Point3 &camera, int32 npcRange, int32 itemRange);
 
 	//! Update the fast area for the cameras position
 	void updateFastArea(const Point3 &from, const Point3 &to);

@@ -30,6 +30,11 @@
 #include "ultima/ultima8/world/world.h"
 #include "ultima/ultima8/world/current_map.h"
 #include "ultima/ultima8/world/get_object.h"
+#include "ultima/ultima8/world/camera_process.h"
+#include "ultima/ultima8/world/actors/cru_avatar_mover_process.h"
+#include "ultima/ultima8/gumps/game_map_gump.h"
+#include "ultima/ultima8/kernel/mouse.h"
+#include "common/config-manager.h"
 
 namespace Ultima {
 namespace Ultima8 {
@@ -45,6 +50,13 @@ TargetReticleProcess::TargetReticleProcess() : Process(), _reticleEnabled(true),
 	_type = 1; // persistent
 	if (GAME_IS_REGRET)
 		_reticleStyle = 3;
+}
+
+bool TargetReticleProcess::isMouseAiming() const {
+	if (!GAME_IS_CRUSADER || !ConfMan.hasKey("fluid_movement") || !ConfMan.getBool("fluid_movement"))
+		return false;
+	const CruAvatarMoverProcess *mover = dynamic_cast<CruAvatarMoverProcess *>(Ultima8Engine::get_instance()->getAvatarMoverProcess());
+	return mover && mover->isMouseAimActive();
 }
 
 TargetReticleProcess::~TargetReticleProcess() {
@@ -79,7 +91,10 @@ void TargetReticleProcess::run() {
 			putTargetReticleOnItem(target, true);
 	}
 
-	if (frameno - _lastUpdate < 2 * Kernel::FRAMES_PER_SECOND) {
+	// Aiming with the mouse, the reticle follows the pointer closely; the
+	// original only looks again every 2 seconds.
+	const uint32 interval = isMouseAiming() ? 3 : 2 * Kernel::FRAMES_PER_SECOND;
+	if (frameno - _lastUpdate < interval) {
 		return;
 	}
 
@@ -103,7 +118,19 @@ bool TargetReticleProcess::findTargetItem() {
 
 	Point3 pt = mainactor->getLocation();
 
-	Item *item = currentmap->findBestTargetItem(pt.x, pt.y, pt.z, dir, dirmode_16dirs);
+	Item *item = nullptr;
+	GameMapGump *gmg = Ultima8Engine::get_instance()->getGameMapGump();
+	_mouseTargeted = isMouseAiming() && gmg;
+	if (_mouseTargeted) {
+		// Modern controls aim at the mouse pointer: target what's under it,
+		// preferring enemies to objects like barrels.
+		int32 mx, my;
+		Mouse::get_instance()->getMouseCoords(mx, my);
+		gmg->ScreenSpaceToGump(mx, my);
+		item = currentmap->findTargetNearGumpPoint(mx, my, CameraProcess::GetCameraLocation(), 70, 40);
+	} else {
+		item = currentmap->findBestTargetItem(pt.x, pt.y, pt.z, dir, dirmode_16dirs);
+	}
 
 	if (item && item->getObjId() != _lastTargetItem) {
 		Item *lastItem = getItem(_lastTargetItem);
@@ -171,7 +198,10 @@ void TargetReticleProcess::itemMoved(Item *item) {
 	SpriteProcess *spriteproc = dynamic_cast<SpriteProcess *>(Kernel::get_instance()->getProcess(_reticleSpriteProcess));
 
 	if (spriteproc) {
-		if (actordir != _lastTargetDir || dirtoitem != _lastTargetDir) {
+		if (_mouseTargeted) {
+			// Stays on a moving target; the pointer decides when it changes.
+			spriteproc->move(pt.x, pt.y, pt.z - 8);
+		} else if (actordir != _lastTargetDir || dirtoitem != _lastTargetDir) {
 			spriteproc->terminate();
 			_reticleSpriteProcess = 0;
 			clearSprite();

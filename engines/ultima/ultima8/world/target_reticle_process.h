@@ -71,8 +71,12 @@ private:
 	bool findTargetItem();
 	void putTargetReticleOnItem(Item *, bool last_frame);
 	void clearSprite();
+	//! Modern controls with the mouse aiming: the reticle follows the pointer.
+	bool isMouseAiming() const;
 
 	bool _reticleEnabled;
+	//! The current target was picked from the mouse pointer (not saved)
+	bool _mouseTargeted = false;
 	int32 _lastUpdate;
 	uint16 _reticleSpriteProcess;
 	Direction _lastTargetDir;

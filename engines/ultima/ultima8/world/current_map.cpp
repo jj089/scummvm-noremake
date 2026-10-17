@@ -379,6 +379,43 @@ Item *CurrentMap::findBestTargetItem(int32 x, int32 y, int32 z, Direction dir, D
 	return bestitem;
 }
 
+Item *CurrentMap::findTargetNearGumpPoint(int32 gx, int32 gy, const Point3 &camera, int32 npcRange, int32 itemRange) {
+	const uint16 controllednpc = World::get_instance()->getControlledNPCNum();
+	Item *bestnpc = nullptr, *bestitem = nullptr;
+	int32 bestnpcdist = npcRange * npcRange + 1, bestitemdist = itemRange * itemRange + 1;
+
+	for (int i = 0; i < MAP_NUM_TARGET_ITEMS; i++) {
+		if (_targets[i] == 0 || _targets[i] == controllednpc)
+			continue;
+		Item *item = getItem(_targets[i]);
+		if (!item) {
+			_targets[i] = 0;
+			continue;
+		}
+		if (item->hasFlags(Item::FLG_BROKEN) || !item->isPartlyOnScreen())
+			continue;
+		const Actor *actor = dynamic_cast<const Actor *>(item);
+		if (actor && actor->isDead())
+			continue;
+
+		// Screen position of the item's centre, as in GameMapGump::GetLocationOfItem.
+		const Point3 c = item->getCentre();
+		const int32 sx = (c.x - c.y) / 4 - (camera.x - camera.y) / 4;
+		const int32 sy = (c.x + c.y) / 8 - c.z - ((camera.x + camera.y) / 8 - camera.z);
+		const int32 dist = (sx - gx) * (sx - gx) + (sy - gy) * (sy - gy);
+		if (actor) {
+			if (dist < bestnpcdist) {
+				bestnpc = item;
+				bestnpcdist = dist;
+			}
+		} else if (dist < bestitemdist) {
+			bestitem = item;
+			bestitemdist = dist;
+		}
+	}
+	return bestnpc ? bestnpc : bestitem;
+}
+
 
 void CurrentMap::removeItemFromList(Item *item, int32 oldx, int32 oldy) {
 	//! This might a bit too inefficient

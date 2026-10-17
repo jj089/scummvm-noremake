@@ -61,6 +61,11 @@ public:
 		return _mouseButton[0].isState(MBS_DOWN);
 	}
 
+	//! Is the player aiming with the mouse (fluid movement)
+	bool isMouseAimActive() const {
+		return _mouseAimActive;
+	}
+
 private:
 	/** Try readying or firing weapon. */
 	void tryAttack();
