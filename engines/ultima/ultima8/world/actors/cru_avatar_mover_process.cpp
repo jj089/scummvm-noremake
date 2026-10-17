@@ -804,7 +804,7 @@ bool CruAvatarMoverProcess::fluidTryMove(Actor *avatar, int32 dx, int32 dy, Dire
 	if (!dx && !dy)
 		return true;
 
-	const CurrentMap *cm = World::get_instance()->getCurrentMap();
+	CurrentMap *cm = World::get_instance()->getCurrentMap();
 	const Point3 pt = avatar->getLocation();
 	int32 xd, yd, zd;
 	avatar->getFootpadWorld(xd, yd, zd);
@@ -830,6 +830,27 @@ bool CruAvatarMoverProcess::fluidTryMove(Actor *avatar, int32 dx, int32 dy, Dire
 				return true;
 			}
 		}
+	}
+
+	// Fall back to the search the original animations use, which handles
+	// floor pieces at any height (e.g. raised floor markings). Only accept
+	// small adjustments so we never pop through walls.
+	int32 tx, ty, tz;
+	if (cm->scanForValidPosition(pt.x + dx, pt.y + dy, pt.z, avatar, dir, true, tx, ty, tz) &&
+		ABS(tx - (pt.x + dx)) <= 16 && ABS(ty - (pt.y + dy)) <= 16 && ABS(tz - pt.z) <= 24) {
+		avatar->collideMove(tx, ty, tz, false, true);
+		movedx = tx - pt.x;
+		movedy = ty - pt.y;
+		return true;
+	}
+
+	if (gDebugLevel >= 1) {
+		const Box target(pt.x + dx, pt.y + dy, pt.z, xd, yd, zd);
+		const PositionInfo info = cm->getPositionInfo(target, start, shapeflags, avatar->getObjId());
+		debug(1, "fluid move blocked at %d,%d,%d by %s (shape %d) valid=%d supported=%d land=%d",
+			  pt.x, pt.y, pt.z, info.blocker ? "item" : "nothing",
+			  info.blocker ? (int)info.blocker->getShape() : -1, info.valid, info.supported,
+			  info.land ? (int)info.land->getShape() : -1);
 	}
 	return false;
 }

@@ -22,7 +22,9 @@
 #ifndef ULTIMA8_GFX_HD_SHAPE_CACHE_H
 #define ULTIMA8_GFX_HD_SHAPE_CACHE_H
 
+#include "common/array.h"
 #include "common/hashmap.h"
+#include "common/list.h"
 #include "common/scummsys.h"
 
 namespace Graphics {
@@ -39,8 +41,8 @@ namespace Ultima8 {
  * point scaled) in the game data directory:
  *   hdshapes/<shape>_<frame>.png   (4-digit, zero padded; main shapes only)
  *
- * The directory is indexed once, frames are decoded on first use and kept in
- * a size-limited cache.
+ * The directory is indexed once. Frames are decoded on first use or ahead of
+ * time by preload(), and stay in memory (the full set is about 1.3 GB).
  */
 class HDShapeCache {
 public:
@@ -57,16 +59,27 @@ public:
 
 	bool hasAny() const { return !_available.empty(); }
 
+	//! Decode frames ahead of use for up to budgetMs. Call when idle.
+	void preload(uint32 budgetMs);
+
 private:
 	void clear();
+	Graphics::Surface *decode(uint32 key);
 
 	static HDShapeCache *_instance;
 
 	typedef Common::HashMap<uint32, bool> AvailableMap;
 	typedef Common::HashMap<uint32, Graphics::Surface *> SurfaceMap;
+	typedef Common::HashMap<uint32, Common::Array<uint32> > ShapeFramesMap;
 	AvailableMap _available;
 	SurfaceMap _loaded;
-	uint32 _loadedBytes;
+	uint64 _loadedBytes;
+
+	// Preload order: frames of shapes just seen first, then everything.
+	Common::List<uint32> _priority;
+	Common::Array<uint32> _preloadOrder;
+	uint _preloadPos;
+	ShapeFramesMap _framesByShape;
 };
 
 } // End of namespace Ultima8

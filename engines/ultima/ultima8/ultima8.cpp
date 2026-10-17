@@ -745,6 +745,11 @@ Common::Error Ultima8Engine::runGame() {
 		if (_autoTest)
 			_autoTest->update();
 
+		// Use spare time to decode HD art ahead of use, so effects like
+		// explosions don't stall the first time they appear.
+		if (_renderScale == HDShapeCache::HD_SCALE)
+			HDShapeCache::get_instance()->preload(4);
+
 		if (_lastError.getCode() != Common::kNoError) {
 			return _lastError;
 		}

@@ -724,7 +724,7 @@ struct ShapeFramePtrHash {
 typedef Common::HashMap<const ShapeFrame *, ScaledFrame, ShapeFramePtrHash> ScaledFrameMap;
 static ScaledFrameMap *_scaledFrames = nullptr;
 static uint32 _scaledFrameBytes = 0;
-static const uint32 SCALED_FRAME_LIMIT = 256 * 1024 * 1024;
+static const uint32 SCALED_FRAME_LIMIT = 1024u * 1024 * 1024;
 
 static void clearScaledFrames() {
 	for (auto &entry : *_scaledFrames) {

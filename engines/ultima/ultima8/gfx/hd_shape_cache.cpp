@@ -21,8 +21,10 @@
 
 #include "ultima/ultima8/gfx/hd_shape_cache.h"
 #include "ultima/ultima8/games/game_data.h"
+#include "common/algorithm.h"
 #include "common/archive.h"
 #include "common/file.h"
+#include "common/system.h"
 #include "graphics/surface.h"
 #include "image/png.h"
 
@@ -31,23 +33,73 @@ namespace Ultima8 {
 
 HDShapeCache *HDShapeCache::_instance = nullptr;
 
-// Decoded frames kept in memory before the cache is flushed.
-static const uint32 HD_CACHE_LIMIT = 512 * 1024 * 1024;
+// Background preloading stops once this much is decoded (frames needed on
+// screen are still loaded). The full Crusader set is about 1.3 GB.
+static const uint64 HD_PRELOAD_LIMIT = 3ULL * 1024 * 1024 * 1024;
 
 static inline uint32 hdKey(uint32 shapenum, uint32 framenum) {
 	return (shapenum << 16) | (framenum & 0xFFFF);
 }
 
-HDShapeCache::HDShapeCache() : _loadedBytes(0) {
+HDShapeCache::HDShapeCache() : _loadedBytes(0), _preloadPos(0) {
 	Common::ArchiveMemberList files;
 	SearchMan.listMatchingMembers(files, "hdshapes/*.png", true);
 	for (const auto &f : files) {
 		const Common::String name = f->getFileName();
 		uint shapenum, framenum;
-		if (sscanf(name.c_str(), "%u_%u.png", &shapenum, &framenum) == 2)
-			_available[hdKey(shapenum, framenum)] = true;
+		if (sscanf(name.c_str(), "%u_%u.png", &shapenum, &framenum) == 2) {
+			const uint32 key = hdKey(shapenum, framenum);
+			_available[key] = true;
+			_preloadOrder.push_back(key);
+			_framesByShape[shapenum].push_back(key);
+		}
 	}
+	Common::sort(_preloadOrder.begin(), _preloadOrder.end());
 	debug(1, "HDShapeCache: %u high resolution frames available", _available.size());
+}
+
+Graphics::Surface *HDShapeCache::decode(uint32 key) {
+	const uint32 shapenum = key >> 16, framenum = key & 0xFFFF;
+	const uint32 startMs = g_system->getMillis();
+	Graphics::Surface *result = nullptr;
+	Common::File f;
+	Image::PNGDecoder png;
+	const Common::String filename = Common::String::format("hdshapes/%04u_%04u.png", shapenum, framenum);
+	if (f.open(Common::Path(filename)) && png.loadStream(f) && png.getSurface()) {
+		// Native 32-bit 0xAARRGGBB values, as RenderSurface reads them.
+		result = png.getSurface()->convertTo(Graphics::PixelFormat(4, 8, 8, 8, 8, 16, 8, 0, 24));
+		_loadedBytes += (uint64)result->w * result->h * 4;
+	} else {
+		warning("HDShapeCache: could not load %s", filename.c_str());
+		_available.erase(key);
+	}
+	_loaded[key] = result;
+	const uint32 took = g_system->getMillis() - startMs;
+	if (took >= 8)
+		debug(1, "HDShapeCache: slow load %s took %u ms", filename.c_str(), took);
+	return result;
+}
+
+void HDShapeCache::preload(uint32 budgetMs) {
+	if (_loadedBytes > HD_PRELOAD_LIMIT)
+		return;
+	const uint32 start = g_system->getMillis();
+	while (g_system->getMillis() - start < budgetMs) {
+		uint32 key;
+		if (!_priority.empty()) {
+			key = _priority.front();
+			_priority.pop_front();
+		} else if (_preloadPos < _preloadOrder.size()) {
+			key = _preloadOrder[_preloadPos++];
+			if (_preloadPos == _preloadOrder.size())
+				debug(1, "HDShapeCache: preload complete after %u ms, %u MB decoded",
+					  g_system->getMillis(), (uint32)(_loadedBytes / (1024 * 1024)));
+		} else {
+			return;
+		}
+		if (_available.contains(key) && !_loaded.contains(key))
+			decode(key);
+	}
 }
 
 HDShapeCache::~HDShapeCache() {
@@ -88,23 +140,16 @@ const Graphics::Surface *HDShapeCache::getFrame(uint16 flexId, uint32 shapenum, 
 	if (it != _loaded.end())
 		return it->_value;
 
-	if (_loadedBytes > HD_CACHE_LIMIT)
-		clear();
-
-	Graphics::Surface *result = nullptr;
-	Common::File f;
-	Image::PNGDecoder png;
-	const Common::String filename = Common::String::format("hdshapes/%04u_%04u.png", shapenum, framenum);
-	if (f.open(Common::Path(filename)) && png.loadStream(f) && png.getSurface()) {
-		// Native 32-bit 0xAARRGGBB values, as RenderSurface reads them.
-		result = png.getSurface()->convertTo(Graphics::PixelFormat(4, 8, 8, 8, 8, 16, 8, 0, 24));
-		_loadedBytes += result->w * result->h * 4;
-	} else {
-		warning("HDShapeCache: could not load %s", filename.c_str());
-		_available.erase(key);
+	// First use of this shape: preload its other frames next, since an
+	// animation (firing, explosion...) will need them in the next moments.
+	ShapeFramesMap::iterator sf = _framesByShape.find(shapenum);
+	if (sf != _framesByShape.end()) {
+		for (const uint32 k : sf->_value)
+			_priority.push_back(k);
+		_framesByShape.erase(sf);
 	}
-	_loaded[key] = result;
-	return result;
+
+	return decode(key);
 }
 
 } // End of namespace Ultima8
