@@ -39,7 +39,8 @@ namespace Ultima8 {
  *
  * Frames are PNG files (RGBA, HD_SCALE times the original size, same anchor
  * point scaled) in the game data directory:
- *   hdshapes/<shape>_<frame>.png   (4-digit, zero padded; main shapes only)
+ *   hdshapes/<shape>_<frame>.png   (main shapes; 4-digit, zero padded)
+ *   hdgumps/<shape>_<frame>.png    (gump shapes: menus, HUD)
  *
  * The directory is indexed once. Frames are decoded on first use or ahead of
  * time by preload(), and stay in memory (the full set is about 1.3 GB).
@@ -55,7 +56,8 @@ public:
 	static void destroyInstance();
 
 	//! Returns the HD frame (32-bit 0xAARRGGBB pixels), or nullptr if none exists.
-	const Graphics::Surface *getFrame(uint16 flexId, uint32 shapenum, uint32 framenum);
+	//! palette: the PaletteManager::PalIndex the shape is drawn with.
+	const Graphics::Surface *getFrame(uint16 flexId, uint32 shapenum, uint32 framenum, uint32 palette);
 
 	bool hasAny() const { return !_available.empty(); }
 

@@ -21,6 +21,7 @@
 
 #include "ultima/ultima8/gfx/hd_shape_cache.h"
 #include "ultima/ultima8/games/game_data.h"
+#include "ultima/ultima8/gfx/palette_manager.h"
 #include "common/algorithm.h"
 #include "common/archive.h"
 #include "common/file.h"
@@ -37,21 +38,45 @@ HDShapeCache *HDShapeCache::_instance = nullptr;
 // screen are still loaded). The full Crusader set is about 1.3 GB.
 static const uint64 HD_PRELOAD_LIMIT = 3ULL * 1024 * 1024 * 1024;
 
-static inline uint32 hdKey(uint32 shapenum, uint32 framenum) {
-	return (shapenum << 16) | (framenum & 0xFFFF);
+// Replacement art directories by shape archive and palette (the same shape
+// drawn with a different palette needs its own HD version).
+static const struct {
+	uint16 flexId;
+	uint16 palette;
+	const char *dir;
+} HD_DIRS[] = {
+	{ GameData::MAINSHAPES, PaletteManager::Pal_Game, "hdshapes" },
+	{ GameData::GUMPS, PaletteManager::Pal_Game, "hdgumps" },
+	{ GameData::GUMPS, PaletteManager::Pal_Misc, "hdgumps_misc" },
+	{ GameData::GUMPS, PaletteManager::Pal_Diff, "hdgumps_diff" },
+};
+
+// Key: archive (2 bits) | palette (3 bits) | shape (11 bits) | frame (16 bits)
+static inline uint32 hdKey(uint32 flexId, uint32 palette, uint32 shapenum, uint32 framenum) {
+	return ((flexId & 3) << 30) | ((palette & 7) << 27) | ((shapenum & 0x7FF) << 16) | (framenum & 0xFFFF);
+}
+
+static const char *hdDir(uint32 flexId, uint32 palette) {
+	for (const auto &d : HD_DIRS) {
+		if (d.flexId == flexId && d.palette == palette)
+			return d.dir;
+	}
+	return nullptr;
 }
 
 HDShapeCache::HDShapeCache() : _loadedBytes(0), _preloadPos(0) {
-	Common::ArchiveMemberList files;
-	SearchMan.listMatchingMembers(files, "hdshapes/*.png", true);
-	for (const auto &f : files) {
-		const Common::String name = f->getFileName();
-		uint shapenum, framenum;
-		if (sscanf(name.c_str(), "%u_%u.png", &shapenum, &framenum) == 2) {
-			const uint32 key = hdKey(shapenum, framenum);
-			_available[key] = true;
-			_preloadOrder.push_back(key);
-			_framesByShape[shapenum].push_back(key);
+	for (const auto &d : HD_DIRS) {
+		Common::ArchiveMemberList files;
+		SearchMan.listMatchingMembers(files, Common::Path(Common::String::format("%s/*.png", d.dir)), true);
+		for (const auto &f : files) {
+			const Common::String name = f->getFileName();
+			uint shapenum, framenum;
+			if (sscanf(name.c_str(), "%u_%u.png", &shapenum, &framenum) == 2 && shapenum < 0x800) {
+				const uint32 key = hdKey(d.flexId, d.palette, shapenum, framenum);
+				_available[key] = true;
+				_preloadOrder.push_back(key);
+				_framesByShape[key >> 16].push_back(key);
+			}
 		}
 	}
 	Common::sort(_preloadOrder.begin(), _preloadOrder.end());
@@ -59,12 +84,12 @@ HDShapeCache::HDShapeCache() : _loadedBytes(0), _preloadPos(0) {
 }
 
 Graphics::Surface *HDShapeCache::decode(uint32 key) {
-	const uint32 shapenum = key >> 16, framenum = key & 0xFFFF;
+	const uint32 flexId = key >> 30, palette = (key >> 27) & 7, shapenum = (key >> 16) & 0x7FF, framenum = key & 0xFFFF;
 	const uint32 startMs = g_system->getMillis();
 	Graphics::Surface *result = nullptr;
 	Common::File f;
 	Image::PNGDecoder png;
-	const Common::String filename = Common::String::format("hdshapes/%04u_%04u.png", shapenum, framenum);
+	const Common::String filename = Common::String::format("%s/%04u_%04u.png", hdDir(flexId, palette), shapenum, framenum);
 	if (f.open(Common::Path(filename)) && png.loadStream(f) && png.getSurface()) {
 		// Native 32-bit 0xAARRGGBB values, as RenderSurface reads them.
 		result = png.getSurface()->convertTo(Graphics::PixelFormat(4, 8, 8, 8, 8, 16, 8, 0, 24));
@@ -128,11 +153,11 @@ void HDShapeCache::clear() {
 	_loadedBytes = 0;
 }
 
-const Graphics::Surface *HDShapeCache::getFrame(uint16 flexId, uint32 shapenum, uint32 framenum) {
-	if (flexId != GameData::MAINSHAPES)
+const Graphics::Surface *HDShapeCache::getFrame(uint16 flexId, uint32 shapenum, uint32 framenum, uint32 palette) {
+	if (!hdDir(flexId, palette) || shapenum >= 0x800)
 		return nullptr;
 
-	const uint32 key = hdKey(shapenum, framenum);
+	const uint32 key = hdKey(flexId, palette, shapenum, framenum);
 	if (!_available.contains(key))
 		return nullptr;
 
@@ -142,7 +167,7 @@ const Graphics::Surface *HDShapeCache::getFrame(uint16 flexId, uint32 shapenum, 
 
 	// First use of this shape: preload its other frames next, since an
 	// animation (firing, explosion...) will need them in the next moments.
-	ShapeFramesMap::iterator sf = _framesByShape.find(shapenum);
+	ShapeFramesMap::iterator sf = _framesByShape.find(key >> 16);
 	if (sf != _framesByShape.end()) {
 		for (const uint32 k : sf->_value)
 			_priority.push_back(k);

@@ -1154,19 +1154,36 @@ bool RenderSurface::paintHD(const Shape *s, uint32 framenum, int32 x, int32 y, b
 	if (!cache->hasAny())
 		return false;
 
-	// HD art is made with the game palette; shapes drawn with any other
-	// palette keep their original pixels.
+	// HD art is made per palette; find which one this shape is drawn with.
+	// Shapes using any other palette keep their original pixels.
 	PaletteManager *pm = PaletteManager::get_instance();
-	if (!pm || s->getPalette() != pm->getPalette(PaletteManager::Pal_Game))
+	if (!pm)
+		return false;
+	static const PaletteManager::PalIndex HD_PALETTES[] = {
+		PaletteManager::Pal_Game, PaletteManager::Pal_Misc, PaletteManager::Pal_Diff
+	};
+	int palIndex = -1;
+	for (const PaletteManager::PalIndex p : HD_PALETTES) {
+		if (s->getPalette() == pm->getPalette(p)) {
+			palIndex = p;
+			break;
+		}
+	}
+	if (palIndex < 0)
 		return false;
 
 	uint16 flexId;
 	uint32 shapenum;
 	s->getShapeId(flexId, shapenum);
-	const Graphics::Surface *hd = cache->getFrame(flexId, shapenum, framenum);
+	const Graphics::Surface *hd = cache->getFrame(flexId, shapenum, framenum, palIndex);
 	const ShapeFrame *frame = s->getFrame(framenum);
-	if (!hd || !frame || hd->w != frame->_width * _scale || hd->h != frame->_height * _scale)
+	if (!hd || !frame)
 		return false;
+	if (hd->w != frame->_width * _scale || hd->h != frame->_height * _scale) {
+		debug(1, "HD frame %d:%u/%u size %dx%d doesn't match %dx%d", flexId, shapenum, framenum,
+			  hd->w, hd->h, frame->_width * _scale, frame->_height * _scale);
+		return false;
+	}
 
 	const int32 top = (y - frame->_yoff) * _scale;
 	const int32 left = mirrored ? (x + frame->_xoff + 1) * _scale - hd->w : (x - frame->_xoff) * _scale;
