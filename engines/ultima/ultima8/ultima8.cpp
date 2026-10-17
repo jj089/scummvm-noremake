@@ -28,6 +28,9 @@
 #include "engines/dialogs.h"
 #include "engines/util.h"
 #include "image/png.h"
+#include "common/fs.h"
+#include "graphics/surface.h"
+#include "video/avi_decoder.h"
 #include "ultima/ultima.h"
 #include "ultima/ultima8/audio/audio_mixer.h"
 #include "ultima/ultima8/audio/cru_music_process.h"
@@ -150,7 +153,53 @@ Ultima8Engine::~Ultima8Engine() {
 	_instance = nullptr;
 }
 
+// Export every frame of every Crusader movie as PNG using the engine's own
+// Xan decoder.  Enabled by setting "cru_dump_movies" to an output directory.
+static void dumpCruMovies(const Common::FSNode &gameDir, const Common::FSNode &outRoot) {
+	Common::FSList files;
+	const Common::FSNode flicsDir = gameDir.getChild("flics");
+	if (!flicsDir.getChildren(files, Common::FSNode::kListFilesOnly)) {
+		warning("cru_dump_movies: no flics directory in %s", gameDir.getPath().toString().c_str());
+		return;
+	}
+	outRoot.createDirectory();
+	for (const Common::FSNode &file : files) {
+		const Common::String name = file.getName();
+		if (!name.hasSuffixIgnoreCase(".avi"))
+			continue;
+		Common::SeekableReadStream *rs = file.createReadStream();
+		Video::AVIDecoder decoder;
+		if (!rs || !decoder.loadStream(rs)) {
+			warning("cru_dump_movies: could not open %s", name.c_str());
+			continue;
+		}
+		const Common::FSNode movieDir = outRoot.getChild(Common::String(name.c_str(), name.size() - 4));
+		movieDir.createDirectory();
+		int written = 0;
+		while (!decoder.endOfVideo()) {
+			const Graphics::Surface *frame = decoder.decodeNextFrame();
+			if (!frame)
+				break;
+			const Common::FSNode png = movieDir.getChild(Common::String::format("f%05d.png", written));
+			Common::SeekableWriteStream *ws = png.createWriteStream(false);
+			if (!ws)
+				break;
+			Image::writePNG(*ws, *frame, decoder.getPalette());
+			delete ws;
+			written++;
+		}
+		debug("cru_dump_movies: %s -> %d frames", name.c_str(), written);
+	}
+}
+
 Common::Error Ultima8Engine::run() {
+	if (ConfMan.hasKey("cru_dump_movies")) {
+		const Common::FSNode gameDir(ConfMan.getPath("path"));
+		const Common::FSNode outRoot(Common::Path(ConfMan.get("cru_dump_movies"), Common::Path::kNativeSeparator));
+		dumpCruMovies(gameDir, outRoot);
+		return Common::kNoError;
+	}
+
 	Common::Error result = initialize();
 	if (result.getCode() == Common::kNoError) {
 		result = runGame();
