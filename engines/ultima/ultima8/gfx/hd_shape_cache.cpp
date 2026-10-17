@@ -96,7 +96,8 @@ const Graphics::Surface *HDShapeCache::getFrame(uint16 flexId, uint32 shapenum, 
 	Image::PNGDecoder png;
 	const Common::String filename = Common::String::format("hdshapes/%04u_%04u.png", shapenum, framenum);
 	if (f.open(Common::Path(filename)) && png.loadStream(f) && png.getSurface()) {
-		result = png.getSurface()->convertTo(Graphics::PixelFormat::createFormatARGB32());
+		// Native 32-bit 0xAARRGGBB values, as RenderSurface reads them.
+		result = png.getSurface()->convertTo(Graphics::PixelFormat(4, 8, 8, 8, 8, 16, 8, 0, 24));
 		_loadedBytes += result->w * result->h * 4;
 	} else {
 		warning("HDShapeCache: could not load %s", filename.c_str());

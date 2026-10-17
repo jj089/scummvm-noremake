@@ -52,7 +52,7 @@ public:
 	static HDShapeCache *get_instance();
 	static void destroyInstance();
 
-	//! Returns the HD frame as an ARGB8888 surface, or nullptr if none exists.
+	//! Returns the HD frame (32-bit 0xAARRGGBB pixels), or nullptr if none exists.
 	const Graphics::Surface *getFrame(uint16 flexId, uint32 shapenum, uint32 framenum);
 
 	bool hasAny() const { return !_available.empty(); }

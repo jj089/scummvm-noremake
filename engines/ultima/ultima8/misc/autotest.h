@@ -42,6 +42,7 @@ namespace Ultima8 {
  *   logevery <ms>             - also log avatar state periodically (0 = off)
  *   shot <path>               - save the current screen as PNG
  *   god                       - make the avatar invincible
+ *   movie <name>              - play a Crusader movie (e.g. 01A)
  *   newgame | load <slot> | save <slot> | quit
  */
 class AutoTest {

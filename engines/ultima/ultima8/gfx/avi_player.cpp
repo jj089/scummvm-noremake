@@ -24,15 +24,33 @@
 #include "ultima/ultima8/gfx/render_surface.h"
 #include "ultima/ultima8/gfx/texture.h"
 #include "video/avi_decoder.h"
+#include "video/theora_decoder.h"
+#include "ultima/ultima8/ultima8.h"
 
 namespace Ultima {
 namespace Ultima8 {
 
-AVIPlayer::AVIPlayer(Common::SeekableReadStream *rs, int width, int height, const byte *overridePal, bool noScale)
+AVIPlayer::AVIPlayer(Common::SeekableReadStream *rs, int width, int height, const byte *overridePal, bool noScale,
+					 Common::SeekableReadStream *hdrs)
 	: MoviePlayer(), _playing(false), _width(width), _height(height),
-	  _doubleSize(false), _pausedMusic(false), _overridePal(overridePal) {
+	  _doubleSize(false), _pausedMusic(false), _overridePal(overridePal), _hdDecoder(nullptr) {
 	_decoder = new Video::AVIDecoder();
 	_decoder->loadStream(rs);
+
+#ifdef USE_THEORADEC
+	if (hdrs && Ultima8Engine::get_instance()->getRenderScale() > 1) {
+		_hdDecoder = new Video::TheoraDecoder();
+		if (!_hdDecoder->loadStream(hdrs)) {
+			warning("AVIPlayer: could not load HD movie, using the original");
+			delete _hdDecoder;
+			_hdDecoder = nullptr;
+		}
+	} else {
+		delete hdrs;
+	}
+#else
+	delete hdrs;
+#endif
 	uint32 vidWidth = _decoder->getWidth();
 	uint32 vidHeight = _decoder->getHeight();
 	if (vidWidth <= _width / 2 && vidHeight <= _height / 2 && !noScale) {
@@ -51,6 +69,7 @@ AVIPlayer::AVIPlayer(Common::SeekableReadStream *rs, int width, int height, cons
 
 AVIPlayer::~AVIPlayer() {
 	delete _decoder;
+	delete _hdDecoder;
 }
 
 void AVIPlayer::start() {
@@ -61,7 +80,10 @@ void AVIPlayer::start() {
 	}
 
 	_playing = true;
-	_decoder->start();
+	if (_hdDecoder)
+		_hdDecoder->start();
+	else
+		_decoder->start();
 }
 
 void AVIPlayer::stop() {
@@ -72,10 +94,32 @@ void AVIPlayer::stop() {
 	}
 
 	_playing = false;
-	_decoder->stop();
+	if (_hdDecoder)
+		_hdDecoder->stop();
+	else
+		_decoder->stop();
 }
 
 void AVIPlayer::paint(RenderSurface *surf, int /*lerp*/) {
+	if (_hdDecoder) {
+		if (_hdDecoder->endOfVideo()) {
+			_playing = false;
+			return;
+		}
+		if (_hdDecoder->needsUpdate()) {
+			const Graphics::Surface *frame = _hdDecoder->decodeNextFrame();
+			if (frame)
+				_hdFrame.copyFrom(*frame);
+		}
+		// The HD frame covers the same area as the original would, drawn at
+		// full physical resolution.
+		surf->fill32(TEX32_PACK_RGB(0, 0, 0), _xoff, _yoff, _currentFrame.w, _currentFrame.h);
+		if (_hdFrame.w)
+			surf->BlitPhysical(_hdFrame, Common::Rect(_hdFrame.w, _hdFrame.h),
+							   Common::Rect32(_xoff, _yoff, _xoff + _currentFrame.w, _yoff + _currentFrame.h));
+		return;
+	}
+
 	if (_decoder->endOfVideo()) {
 		_playing = false;
 		return;
@@ -124,13 +168,15 @@ void AVIPlayer::paint(RenderSurface *surf, int /*lerp*/) {
 }
 
 void AVIPlayer::run() {
-	if (_decoder->endOfVideo()) {
+	if ((_hdDecoder ? _hdDecoder->endOfVideo() : _decoder->endOfVideo())) {
 		_playing = false;
 	}
 }
 
 int AVIPlayer::getFrameNo() const {
-	return _decoder->getCurFrame();
+	// HD movies are encoded at the original frame rate, so frame numbers
+	// (used for subtitles) match.
+	return _hdDecoder ? _hdDecoder->getCurFrame() : _decoder->getCurFrame();
 }
 
 void AVIPlayer::setOffset(int xoff, int yoff) {

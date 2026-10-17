@@ -27,6 +27,7 @@
 
 namespace Video {
 class AVIDecoder;
+class VideoDecoder;
 }
 
 namespace Ultima {
@@ -40,7 +41,11 @@ public:
 	//! noScale flag is set.
 	//! If overridePal is set, use that as the palette instead of the AVI's one.
 	//!
-	AVIPlayer(Common::SeekableReadStream *rs, int width, int height, const byte *overridePal, bool noScale);
+	//! If hdrs is given (an HD Theora version of the movie) and the screen is
+	//! drawn at a render scale above 1, the HD version is played instead.
+	//!
+	AVIPlayer(Common::SeekableReadStream *rs, int width, int height, const byte *overridePal, bool noScale,
+			  Common::SeekableReadStream *hdrs = nullptr);
 	~AVIPlayer();
 
 	void run() override;
@@ -62,6 +67,9 @@ private:
 	bool _playing;
 	Video::AVIDecoder *_decoder;
 	Graphics::ManagedSurface _currentFrame;
+	// HD replacement (Theora), played instead of _decoder when present
+	Video::VideoDecoder *_hdDecoder;
+	Graphics::ManagedSurface _hdFrame;
 	// Width and height of the area we've been given to play back in
 	uint32 _width;
 	uint32 _height;

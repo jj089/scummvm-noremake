@@ -77,12 +77,13 @@ static Common::String _fixCrusaderMovieName(const Common::String &s) {
 	return s;
 }
 
-static Common::SeekableReadStream *_tryLoadCruMovieFile(const Common::String &filename, const char *extn) {
-	const Common::String path = Common::String::format("flics/%s.%s", filename.c_str(), extn);
+static Common::SeekableReadStream *_tryLoadCruMovieFile(const Common::String &filename, const char *extn,
+														const char *dir = "flics") {
+	const Common::String path = Common::String::format("%s/%s.%s", dir, filename.c_str(), extn);
 	auto *rs = new Common::File();
 	if (!rs->open(path.c_str())) {
 		// Try with a "0" in the name
-		const Common::String adjustedfn = Common::String::format("flics/0%s.%s", filename.c_str(), extn);
+		const Common::String adjustedfn = Common::String::format("%s/0%s.%s", dir, filename.c_str(), extn);
 		if (!rs->open(adjustedfn.c_str())) {
 			delete rs;
 			return nullptr;
@@ -116,13 +117,14 @@ MovieGump::MovieGump() : ModalGump(), _player(nullptr), _subtitleWidget(0), _las
 
 MovieGump::MovieGump(int width, int height, Common::SeekableReadStream *rs,
 					 bool introMusicHack, bool noScale, const byte *overridePal,
-					 uint32 flags, int32 layer)
+					 uint32 flags, int32 layer, Common::SeekableReadStream *hdrs)
 		: ModalGump(50, 50, width, height, 0, flags, layer), _subtitleWidget(0), _lastFrameNo(-1) {
 	uint32 stream_id = rs->readUint32BE();
 	rs->seek(-4, SEEK_CUR);
 	if (stream_id == 0x52494646) {// 'RIFF' - crusader AVIs
-		_player = new AVIPlayer(rs, width, height, overridePal, noScale);
+		_player = new AVIPlayer(rs, width, height, overridePal, noScale, hdrs);
 	} else {
+		delete hdrs;
 		_player = new SKFPlayer(rs, width, height, introMusicHack);
 	}
 }
@@ -260,7 +262,12 @@ ProcId MovieGump::U8MovieViewer(Common::SeekableReadStream *rs, bool fade, bool 
 	if (!rs)
 		return nullptr;
 
-	MovieGump *gump = new MovieGump(x, y, rs, false, false, pal);
+	// HD replacement movie (Theora), used when drawing at a higher render scale.
+	Common::SeekableReadStream *hdrs = nullptr;
+	if (Ultima8Engine::get_instance()->getRenderScale() > 1)
+		hdrs = _tryLoadCruMovieFile(fname, "ogv", "flics_hd");
+
+	MovieGump *gump = new MovieGump(x, y, rs, false, false, pal, FLAG_PREVENT_SAVE, LAYER_MODAL, hdrs);
 
 	gump->InitGump(parent, true);
 

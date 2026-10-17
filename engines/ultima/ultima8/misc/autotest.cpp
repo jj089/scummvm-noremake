@@ -27,6 +27,7 @@
 #include "ultima/ultima8/kernel/mouse.h"
 #include "ultima/ultima8/gumps/game_map_gump.h"
 #include "ultima/ultima8/world/camera_process.h"
+#include "ultima/ultima8/gumps/movie_gump.h"
 #include "ultima/ultima8/world/actors/main_actor.h"
 #include "ultima/ultima8/world/get_object.h"
 #include "common/events.h"
@@ -210,6 +211,8 @@ void AutoTest::execute(const Common::String &line) {
 			debug("autotest: wrote %s", path.c_str());
 		}
 		delete ws;
+	} else if (cmd == "movie") {
+		MovieGump::CruMovieViewer(tok.nextToken(), 640, 480, nullptr, nullptr, 0);
 	} else if (cmd == "god") {
 		MainActor *av = getMainActor();
 		if (av)

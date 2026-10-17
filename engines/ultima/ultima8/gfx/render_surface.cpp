@@ -370,6 +370,15 @@ void RenderSurface::Blit(const Graphics::ManagedSurface &src, const Common::Rect
 	}
 }
 
+void RenderSurface::BlitPhysical(const Graphics::ManagedSurface &src, const Common::Rect &srcRect, const Common::Rect32 &destRect) {
+	const Common::Rect dst((_ox + destRect.left) * _scale, (_oy + destRect.top) * _scale,
+						   (_ox + destRect.right) * _scale, (_oy + destRect.bottom) * _scale);
+	if (dst.width() == srcRect.width() && dst.height() == srcRect.height())
+		_surface->blitFrom(src, srcRect, Common::Point(dst.left, dst.top));
+	else
+		_surface->blitFrom(src, srcRect, dst);
+}
+
 void RenderSurface::CrossKeyBlitMap(const Graphics::Surface& src, const Common::Rect& srcRect, int32 dx, int32 dy, const uint32* map, const uint32 key) {
 	if (_scale > 1) {
 		const Graphics::ManagedSurface &tmp = scaleBlitSource(src, srcRect);
