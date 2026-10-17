@@ -704,9 +704,16 @@ Common::Error Ultima8Engine::runGame() {
 			int32 ticks = _fastTicksNow();
 			int32 diff = next_ticks - ticks;
 
+			// Without interpolation, Crusader paints after every kernel tick
+			// (60 per second) instead of every frame (2 ticks), so the avatar
+			// and the scrolling view move smoothly. Game timing is unchanged.
+			const bool paintPerTick = GAME_IS_CRUSADER && !_interpolate;
+			const int32 stepRate = paintPerTick ? _animationRate / (int32)Kernel::TICKS_PER_FRAME : _animationRate;
+			const unsigned int stepTicks = paintPerTick ? 1 : Kernel::TICKS_PER_FRAME;
+
 			while (diff < 0) {
-				next_ticks += _animationRate;
-				for (unsigned int tick = 0; tick < Kernel::TICKS_PER_FRAME; tick++) {
+				next_ticks += stepRate;
+				for (unsigned int tick = 0; tick < stepTicks; tick++) {
 					_kernel->runProcesses();
 					_desktopGump->run();
 				}
@@ -719,7 +726,7 @@ Common::Error Ultima8Engine::runGame() {
 
 				// If frame skipping is off, we will only recalc next
 				// ticks IF the frames are taking up 'way' too much time.
-				if (!_frameSkip && diff <= -_animationRate * 2) next_ticks = _animationRate + ticks;
+				if (!_frameSkip && diff <= -stepRate * 2) next_ticks = stepRate + ticks;
 
 				diff = next_ticks - ticks;
 				if (!_frameSkip) break;
@@ -746,17 +753,26 @@ Common::Error Ultima8Engine::runGame() {
 		if (_autoTest)
 			_autoTest->update();
 
-		// Use spare time to decode HD art ahead of use, so effects like
-		// explosions don't stall the first time they appear.
-		if (_renderScale == HDShapeCache::HD_SCALE)
-			HDShapeCache::get_instance()->preload(2);
-
 		if (_lastError.getCode() != Common::kNoError) {
 			return _lastError;
 		}
 
-		// Do a delay
-		g_system->delayMillis(5);
+		if (_frameLimit) {
+			// Only spend time we have before the next step is due, so painting
+			// every tick never slows the game down.
+			int32 spareMs = ((int32)next_ticks - (int32)_fastTicksNow()) / 3;
+
+			// Use spare time to decode HD art ahead of use, so effects like
+			// explosions don't stall the first time they appear.
+			if (spareMs > 3 && _renderScale == HDShapeCache::HD_SCALE) {
+				HDShapeCache::get_instance()->preload(MIN<int32>(spareMs - 2, 4));
+				spareMs = ((int32)next_ticks - (int32)_fastTicksNow()) / 3;
+			}
+			if (spareMs > 1)
+				g_system->delayMillis(MIN<int32>(spareMs - 1, 5));
+		} else {
+			g_system->delayMillis(5);
+		}
 	}
 	return Common::kNoError;
 }

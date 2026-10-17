@@ -498,6 +498,10 @@ public:
 	//! Setup the lerped info for this gametick and animate the item
 	void setupLerp(int32 gametick);
 
+	//! Make the draw position and frame the item's current ones (for painting
+	//! without interpolation, which may happen more than once per frame).
+	void refreshLerpNext();
+
 	//! The item has entered the fast area
 	virtual uint32 enterFastArea();
 

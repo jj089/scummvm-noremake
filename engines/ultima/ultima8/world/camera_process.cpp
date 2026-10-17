@@ -274,6 +274,16 @@ Point3 CameraProcess::GetLerped(int32 factor, bool noupdate) {
 		pt.z = ((ls.z * (256 - factor) + le.z * factor) >> 8);
 	}
 
+	// Without interpolation the map may be painted every tick; follow the
+	// item's current position so the view stays locked to it.
+	if (_time == 0 && _itemNum && !Ultima8Engine::get_instance()->isInterpolationEnabled()) {
+		const Item *item = getItem(_itemNum);
+		if (item) {
+			pt = item->getLocation();
+			pt.z += 20; //!!constant, as above
+		}
+	}
+
 	if (_earthquake) {
 		pt.x += 2 * _eqX + 4 * _eqY;
 		pt.y += -2 * _eqX + 4 * _eqY;

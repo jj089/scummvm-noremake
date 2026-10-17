@@ -109,6 +109,7 @@ void GameMapGump::PaintThis(RenderSurface *surf, int32 lerp_factor, bool scaled)
 	_displayList->BeginDisplayList(clipWindow, loc);
 
 	uint32 gametick = Kernel::get_instance()->getFrameNum();
+	const bool noInterpolation = !Ultima8Engine::get_instance()->isInterpolationEnabled();
 
 	bool showEditorItems = Ultima8Engine::get_instance()->isShowEditorItems();
 
@@ -126,7 +127,10 @@ void GameMapGump::PaintThis(RenderSurface *surf, int32 lerp_factor, bool scaled)
 				if (!item) continue;
 
 				item->setupLerp(gametick);
-				item->doLerp(lerp_factor);
+				if (noInterpolation)
+					item->refreshLerpNext(); // painted every tick: show the current state
+				else
+					item->doLerp(lerp_factor);
 
 				if (item->getZ() >= zlimit && !item->getShapeInfo()->is_draw())
 					continue;

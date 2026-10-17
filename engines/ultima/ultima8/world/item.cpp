@@ -1719,6 +1719,17 @@ void Item::destroy(bool delnow) {
 //
 // Desc: Setup the lerped info for this frame
 //
+void Item::refreshLerpNext() {
+	if (_flags & FLG_CONTAINED)
+		return;
+	_lNext._x = _ix = _x;
+	_lNext._y = _iy = _y;
+	_lNext._z = _iz = _z;
+	_lNext._shape = _shape;
+	_lNext._frame = _frame;
+	_lPrev = _lNext;
+}
+
 void Item::setupLerp(int32 gametick) {
 	// Don't need to set us up
 	if (_lastSetup && gametick == _lastSetup)
