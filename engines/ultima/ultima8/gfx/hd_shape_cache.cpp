@@ -49,6 +49,7 @@ static const struct {
 	{ GameData::GUMPS, PaletteManager::Pal_Game, "hdgumps" },
 	{ GameData::GUMPS, PaletteManager::Pal_Misc, "hdgumps_misc" },
 	{ GameData::GUMPS, PaletteManager::Pal_Diff, "hdgumps_diff" },
+	{ GameData::OTHER, PaletteManager::Pal_Game, "hdmouse" }, // mouse cursor (shape 0)
 };
 
 // Key: archive (2 bits) | palette (3 bits) | shape (11 bits) | frame (16 bits)

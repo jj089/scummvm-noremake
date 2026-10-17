@@ -25,6 +25,7 @@
 #include "ultima/ultima8/gfx/shape_frame.h"
 #include "ultima/ultima8/gfx/texture.h"
 #include "ultima/ultima8/gfx/hd_shape_cache.h"
+#include "ultima/ultima8/games/game_data.h"
 #include "ultima/ultima8/gfx/palette_manager.h"
 #include "common/hashmap.h"
 #include "graphics/blit.h"
@@ -1175,6 +1176,10 @@ bool RenderSurface::paintHD(const Shape *s, uint32 framenum, int32 x, int32 y, b
 	uint16 flexId;
 	uint32 shapenum;
 	s->getShapeId(flexId, shapenum);
+	// "Other" shapes (fonts...) share archive id 0 with the mouse cursor art,
+	// which is only used by the cursor code.
+	if (flexId == GameData::OTHER)
+		return false;
 	const Graphics::Surface *hd = cache->getFrame(flexId, shapenum, framenum, palIndex);
 	const ShapeFrame *frame = s->getFrame(framenum);
 	if (!hd || !frame)

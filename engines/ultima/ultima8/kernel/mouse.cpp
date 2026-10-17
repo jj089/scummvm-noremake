@@ -27,6 +27,8 @@
 #include "ultima/ultima.h"
 #include "ultima/ultima8/games/game_data.h"
 #include "ultima/ultima8/gfx/palette.h"
+#include "ultima/ultima8/gfx/palette_manager.h"
+#include "ultima/ultima8/gfx/hd_shape_cache.h"
 #include "ultima/ultima8/gfx/render_surface.h"
 #include "ultima/ultima8/gfx/shape.h"
 #include "ultima/ultima8/gfx/shape_frame.h"
@@ -602,7 +604,14 @@ void Mouse::update() {
 			if (frame >= 0 && (uint)frame < mouse->frameCount()) {
 				const ShapeFrame *f = mouse->getFrame(frame);
 				const int scale = Ultima8Engine::get_instance()->getRenderScale();
-				if (scale > 1) {
+				const Graphics::Surface *hd = nullptr;
+				if (scale == HDShapeCache::HD_SCALE && g_system->hasFeature(OSystem::kFeatureCursorAlpha))
+					hd = HDShapeCache::get_instance()->getFrame(GameData::OTHER, 0, frame, PaletteManager::Pal_Game);
+				if (hd && hd->w == f->_width * scale && hd->h == f->_height * scale) {
+					// HD cursor with smooth (alpha) edges.
+					CursorMan.replaceCursor(*hd, f->_xoff * scale, f->_yoff * scale, 0);
+					debug(1, "Mouse: HD cursor frame %d", frame);
+				} else if (scale > 1) {
 					// Scale the cursor to match the scaled screen.
 					const Graphics::Surface &src = f->getSurface();
 					Graphics::Surface scaled;
