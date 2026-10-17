@@ -27,6 +27,7 @@
 #include "ultima/ultima8/gumps/cru_energy_gump.h"
 
 #include "ultima/ultima8/games/game_data.h"
+#include "ultima/ultima8/ultima8.h"
 #include "ultima/ultima8/gfx/gump_shape_archive.h"
 #include "ultima/ultima8/gfx/shape.h"
 #include "ultima/ultima8/gfx/shape_frame.h"
@@ -80,19 +81,30 @@ void CruStatusGump::createStatusItems() {
 	int w = frameShape->getFrame(0)->_width;
 	int h = frameShape->getFrame(0)->_height;
 
+	// On screens wider than the original 640, spread the boxes across the
+	// full width (same margins), as the original layout fills its screen.
+	int gap = PX_GAP;
+	const Gump *desktop = Ultima8Engine::get_instance()->getDesktopGump();
+	if (desktop) {
+		const int screenw = desktop->getDims().width();
+		const int widegap = (screenw - 2 * PX_FROM_LEFT - w * 5) / 4;
+		if (widegap > gap)
+			gap = widegap;
+	}
+
 	int xoff = 0;
 	Gump *weaponGump = new CruWeaponGump(frameShape, xoff);
 	weaponGump->InitGump(this);
-	Gump *ammoGump = new CruAmmoGump(frameShape, xoff + w + PX_GAP);
+	Gump *ammoGump = new CruAmmoGump(frameShape, xoff + w + gap);
 	ammoGump->InitGump(this);
-	Gump *inventoryGump = new CruInventoryGump(frameShape, xoff + (w + PX_GAP) * 2);
+	Gump *inventoryGump = new CruInventoryGump(frameShape, xoff + (w + gap) * 2);
 	inventoryGump->InitGump(this);
-	Gump *health = new CruHealthGump(frameShape, xoff + (w + PX_GAP) * 3);
+	Gump *health = new CruHealthGump(frameShape, xoff + (w + gap) * 3);
 	health->InitGump(this);
-	Gump *energyGump = new CruEnergyGump(frameShape, xoff + (w + PX_GAP) * 4);
+	Gump *energyGump = new CruEnergyGump(frameShape, xoff + (w + gap) * 4);
 	energyGump->InitGump(this);
 
-	_dims.setWidth(w * 5 + PX_GAP * 4);
+	_dims.setWidth(w * 5 + gap * 4);
 	_dims.setHeight(h);
 	setRelativePosition(BOTTOM_LEFT, PX_FROM_LEFT, -PX_FROM_BOTTOM);
 }

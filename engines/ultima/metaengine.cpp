@@ -194,6 +194,17 @@ static const ADExtraGuiOptionsMap optionsList[] = {
 			0
 		}
 	},
+	{
+		GAMEOPTION_WIDESCREEN,
+		{
+			_s("Widescreen"),
+			_s("Show a wider view of the game to fill widescreen displays (takes effect the next time the game starts)."),
+			"widescreen",
+			true,
+			0,
+			0
+		}
+	},
 	AD_EXTRA_GUI_OPTIONS_TERMINATOR
 };
 
