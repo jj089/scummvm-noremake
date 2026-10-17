@@ -385,12 +385,14 @@ void Mouse::popMouseCursor() {
 
 bool Mouse::isCombatFireClick(int startx, int starty) const {
 	// With Crusader's fluid movement, holding the left button on the game
-	// world with a weapon drawn fires and aims. Moving the mouse must not
-	// start dragging whatever is under the cursor, which pauses the game.
+	// world fires and aims (drawing the weapon if needed). Moving the mouse
+	// must not start dragging whatever is under the cursor, which pauses the
+	// game. This applies whether or not the weapon is drawn yet: the drag
+	// check runs on mouse motion, before the mover has readied the weapon.
 	if (!GAME_IS_CRUSADER || !ConfMan.hasKey("fluid_movement") || !ConfMan.getBool("fluid_movement"))
 		return false;
 	const MainActor *av = getMainActor();
-	if (!av || !av->isInCombat())
+	if (!av || av->getMapNum() == 40) // no combat in the rebel base
 		return false;
 
 	Ultima8Engine *engine = Ultima8Engine::get_instance();

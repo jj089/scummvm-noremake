@@ -1092,9 +1092,10 @@ bool CruAvatarMoverProcess::handleFluidMovement() {
 		avatar->getMapNum() != REBEL_BASE_MAP;
 	if (firing && !avatar->isInCombat())
 		avatar->setInCombat(0);
-	// With an aim (weapon drawn and mouse in use, or the right stick), face
-	// it and strafe; otherwise face the direction of travel.
-	const bool strafing = haveAim;
+	// Face the direction of travel, except while firing with the mouse or
+	// aiming with the right stick: then face the aim and strafe. (Always
+	// facing the cursor while moving reads as sliding.)
+	const bool strafing = mouseFire || stickAim;
 	Direction facedir = strafing ? aimdir : dir;
 
 	// The locomotion animation sets the speed of travel.

@@ -189,7 +189,7 @@ static const ADExtraGuiOptionsMap optionsList[] = {
 			_s("Smooth motion"),
 			_s("Draw in-between positions so movement and scrolling look smooth on fast displays."),
 			"interpolate",
-			true,
+			false,
 			0,
 			0
 		}
