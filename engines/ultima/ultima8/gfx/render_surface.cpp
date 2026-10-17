@@ -908,6 +908,9 @@ void inline paintHDLogic(uint8 *pixels, int32 pitch, const Common::Rect &clipWin
 	}
 }
 
+// Palette entries the game animates (blinking lights, screens).
+static const uint8 CYCLE_FIRST = 8, CYCLE_LAST = 14;
+
 // HD version of translucent drawing (glows, beams, force fields). Pixels whose
 // original palette entry has a blend colour keep that see-through tint, with
 // the HD pixel's brightness relative to the original adding the detail; other
@@ -944,8 +947,11 @@ static void paintHDTranslucentLogic(uint8 *pixels, int32 pitch, const Common::Re
 				const uint32 val = xform[idx];
 				uint8 pr, pg, pb;
 				format.colorToRGB(map[idx], pr, pg, pb);
-				// Detail factor in 1/256ths, kept within half to double.
-				const int k = CLIP((r + g + b + 24) * 256 / (pr + pg + pb + 24), 128, 512);
+				// Detail factor in 1/256ths, kept within half to double. Not for
+				// colour-cycling entries (No Remorse's HUD boxes): their palette
+				// colour keeps changing, which would make the tint pulse.
+				const bool cycling = idx >= CYCLE_FIRST && idx <= CYCLE_LAST;
+				const int k = cycling ? 256 : CLIP((r + g + b + 24) * 256 / (pr + pg + pb + 24), 128, 512);
 				const int ia = 256 - TEX32_A(val);
 				nr = MIN(255, (int)(dr * ia + TEX32_R(val) * k) >> 8);
 				ng = MIN(255, (int)(dg * ia + TEX32_G(val) * k) >> 8);
@@ -968,7 +974,6 @@ static void paintHDTranslucentLogic(uint8 *pixels, int32 pitch, const Common::Re
 // Pixels of a frame using the colour-cycling palette entries (blinking lights,
 // screens). HD art has them frozen at one colour, so they're drawn again on
 // top, scaled, with the current palette.
-static const uint8 CYCLE_FIRST = 8, CYCLE_LAST = 14;
 struct CyclePixels {
 	const void *_srcPixels;
 	Common::Array<uint32> _pixels; // x | y << 12 | index << 24
