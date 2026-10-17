@@ -279,10 +279,17 @@ void AutoTest::execute(const Common::String &line) {
 		RenderSurface *screen = engine->getRenderScreen();
 		Common::FSNode node(Common::Path(path, Common::Path::kNativeSeparator));
 		Common::SeekableWriteStream *ws = node.createWriteStream(false);
-		if (screen && ws) {
+		// What's actually on the display, including whole-screen effects.
+		Graphics::Surface *shown = g_system->lockScreen();
+		if (shown && ws) {
+			Image::writePNG(*ws, *shown);
+			debug("autotest: wrote %s", path.c_str());
+		} else if (screen && ws) {
 			Image::writePNG(*ws, *screen->getRawSurface()->surfacePtr());
 			debug("autotest: wrote %s", path.c_str());
 		}
+		if (shown)
+			g_system->unlockScreen();
 		delete ws;
 	} else if (cmd == "movie") {
 		MovieGump::CruMovieViewer(tok.nextToken(), 640, 480, nullptr, nullptr, 0);

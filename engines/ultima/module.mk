@@ -464,6 +464,7 @@ MODULE_OBJS += \
 	ultima8/gfx/palette.o \
 	ultima8/gfx/palette_fader_process.o \
 	ultima8/gfx/palette_manager.o \
+	ultima8/gfx/post_process.o \
 	ultima8/gfx/raw_shape_frame.o \
 	ultima8/gfx/render_surface.o \
 	ultima8/gfx/shape.o \

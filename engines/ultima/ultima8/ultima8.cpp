@@ -43,6 +43,7 @@
 #include "ultima/ultima8/games/game_data.h"
 #include "ultima/ultima8/gfx/cycle_process.h"
 #include "ultima/ultima8/gfx/fonts/font_manager.h"
+#include "ultima/ultima8/gfx/post_process.h"
 #include "ultima/ultima8/gfx/render_surface.h"
 #include "ultima/ultima8/gumps/weasel_gump.h"
 #include "ultima/ultima8/gumps/cru_credits_gump.h"
@@ -143,7 +144,7 @@ Ultima8Engine::Ultima8Engine(OSystem *syst, const Ultima::UltimaGameDescription 
 		_showTouching(false), _hackMoverEnabled(false), _timeOffset(0),
 		_hasCheated(false), _cheatsEnabled(false),
 		_fontOverride(false), _fontAntialiasing(false), _audioMixer(0), _inverterGump(nullptr),
-		_lerpFactor(256), _controllerActive(false),
+		_lerpFactor(256), _controllerActive(false), _postProcess(nullptr), _sharpen(false),
 		_inBetweenFrame(false), _crusaderTeleporting(false), _moveKeyFrame(0),
 		_highRes(false), _priorFrameCounterTime(0) {
 	_instance = this;
@@ -151,6 +152,7 @@ Ultima8Engine::Ultima8Engine(OSystem *syst, const Ultima::UltimaGameDescription 
 
 Ultima8Engine::~Ultima8Engine() {
 	delete _autoTest;
+	delete _postProcess;
 	HDShapeCache::destroyInstance();
 	delete _kernel;
 	delete _objectManager;
@@ -835,8 +837,17 @@ void Ultima8Engine::paint() {
 	_screen->EndPainting();
 
 	Graphics::Screen *screen = getScreen();
-	if (screen)
-		screen->update();
+	if (screen) {
+		// The sharpened copy goes to the display; the frame itself stays
+		// plain, so nothing gets sharpened twice.
+		if (_sharpen && !_postProcess)
+			_postProcess = new PostProcess();
+		if (_sharpen && _postProcess->present(*screen->surfacePtr())) {
+			screen->clearDirtyRects();
+		} else {
+			screen->update();
+		}
+	}
 }
 
 Common::Error Ultima8Engine::changeVideoMode(int width, int height) {
@@ -1650,6 +1661,7 @@ void Ultima8Engine::applyGameSettings() {
 	_frameSkip = ConfMan.getBool("frameSkip");
 	_frameLimit = ConfMan.getBool("frameLimit");
 	_interpolate = ConfMan.getBool("interpolate");
+	_sharpen = GAME_IS_CRUSADER && (!ConfMan.hasKey("sharpen") || ConfMan.getBool("sharpen"));
 	_cheatsEnabled = ConfMan.getBool("cheat");
 }
 

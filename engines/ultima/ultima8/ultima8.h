@@ -108,6 +108,8 @@ private:
 	int32 _lerpFactor;       //!< Interpolation factor for this frame (0-256)
 
 	bool _controllerActive;  //!< last input came from a controller
+	class PostProcess *_postProcess; //!< whole-screen sharpen / colour
+	bool _sharpen;
 	bool _inBetweenFrame;    //!< Set true if we are doing an inbetween frame
 	uint32 _priorFrameCounterTime;
 
