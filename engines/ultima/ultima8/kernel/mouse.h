@@ -125,6 +125,8 @@ private:
 	int _runThreshold;
 private:
 	void startDragging(int mx, int my);
+	//! A held left click on the game world that should fire, not drag (Crusader fluid movement)
+	bool isCombatFireClick(int startx, int starty) const;
 	void moveDragging(int mx, int my);
 	void stopDragging(int mx, int my);
 	int mouseFrameForDir(Direction mousedir) const;

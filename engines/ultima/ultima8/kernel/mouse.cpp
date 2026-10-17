@@ -31,6 +31,7 @@
 #include "ultima/ultima8/gfx/shape.h"
 #include "ultima/ultima8/gfx/shape_frame.h"
 #include "ultima/ultima8/gumps/gump.h"
+#include "ultima/ultima8/gumps/game_map_gump.h"
 #include "ultima/ultima8/kernel/kernel.h"
 #include "ultima/ultima8/misc/direction_util.h"
 #include "ultima/ultima8/world/actors/avatar_mover_process.h"
@@ -350,8 +351,8 @@ void Mouse::setMouseCoords(int mx, int my) {
 		if (_mouseButton[BUTTON_LEFT].isState(MBS_DOWN)) {
 			int startx = _mouseButton[BUTTON_LEFT]._downPoint.x;
 			int starty = _mouseButton[BUTTON_LEFT]._downPoint.y;
-			if (ABS(startx - mx) > 2 ||
-				ABS(starty - my) > 2) {
+			if ((ABS(startx - mx) > 2 || ABS(starty - my) > 2) &&
+				!isCombatFireClick(startx, starty)) {
 				startDragging(startx, starty);
 			}
 		}
@@ -380,6 +381,25 @@ void Mouse::pushMouseCursor(MouseCursor cursor) {
 void Mouse::popMouseCursor() {
 	_cursors.pop();
 	update();
+}
+
+bool Mouse::isCombatFireClick(int startx, int starty) const {
+	// With Crusader's fluid movement, holding the left button on the game
+	// world with a weapon drawn fires and aims. Moving the mouse must not
+	// start dragging whatever is under the cursor, which pauses the game.
+	if (!GAME_IS_CRUSADER || !ConfMan.hasKey("fluid_movement") || !ConfMan.getBool("fluid_movement"))
+		return false;
+	const MainActor *av = getMainActor();
+	if (!av || !av->isInCombat())
+		return false;
+
+	Ultima8Engine *engine = Ultima8Engine::get_instance();
+	const ObjId id = engine->getDesktopGump()->TraceObjId(startx, starty);
+	const GameMapGump *map = engine->getGameMapGump();
+	if (map && id == map->getObjId())
+		return true;
+	const Item *item = getItem(id);
+	return item && !item->getParent();
 }
 
 void Mouse::startDragging(int startx, int starty) {
