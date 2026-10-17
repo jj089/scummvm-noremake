@@ -806,6 +806,34 @@ void inline paintHDLogic(uint8 *pixels, int32 pitch, const Common::Rect &clipWin
 		 pal->_matrix[4] || pal->_matrix[5] != 0x800 || pal->_matrix[6] || pal->_matrix[7] ||
 		 pal->_matrix[8] || pal->_matrix[9] || pal->_matrix[10] != 0x800 || pal->_matrix[11]);
 
+	// Fast path: 32-bit destination with 8-bit channels and no palette transform.
+	if (sizeof(uintX) == 4 && !transform && format.rBits() == 8 && format.gBits() == 8 && format.bBits() == 8) {
+		const uint rs = format.rShift, gs = format.gShift, bs = format.bShift;
+		const uint32 amask = format.aBits() ? (0xFFu << format.aShift) : 0;
+		for (int y = clipped.top; y < clipped.bottom; y++) {
+			const uint32 *srow = static_cast<const uint32 *>(src.getBasePtr(0, y - dst.top));
+			uint32 *drow = reinterpret_cast<uint32 *>(pixels + y * pitch);
+			for (int x = clipped.left; x < clipped.right; x++) {
+				const uint32 argb = srow[mirrored ? (dst.right - 1 - x) : (x - dst.left)];
+				const uint32 a = argb >> 24;
+				if (!a)
+					continue;
+				const uint32 r = (argb >> 16) & 0xFF, g = (argb >> 8) & 0xFF, b = argb & 0xFF;
+				if (a == 0xFF) {
+					drow[x] = (r << rs) | (g << gs) | (b << bs) | amask;
+				} else {
+					const uint32 d = drow[x], ia = 255 - a;
+					// x/255 approximated as (x + 128) * 257 >> 16
+					const uint32 nr = ((r * a + ((d >> rs) & 0xFF) * ia + 128) * 257) >> 16;
+					const uint32 ng = ((g * a + ((d >> gs) & 0xFF) * ia + 128) * 257) >> 16;
+					const uint32 nb = ((b * a + ((d >> bs) & 0xFF) * ia + 128) * 257) >> 16;
+					drow[x] = (nr << rs) | (ng << gs) | (nb << bs) | amask;
+				}
+			}
+		}
+		return;
+	}
+
 	for (int y = clipped.top; y < clipped.bottom; y++) {
 		const uint32 *srow = static_cast<const uint32 *>(src.getBasePtr(0, y - dst.top));
 		uintX *drow = reinterpret_cast<uintX *>(pixels + y * pitch);
