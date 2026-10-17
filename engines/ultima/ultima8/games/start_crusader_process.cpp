@@ -83,6 +83,8 @@ void StartCrusaderProcess::run() {
 		DifficultyGump *gump = new DifficultyGump();
 		_initStage = StartGame;
 		gump->InitGump(nullptr, true);
+		// The screen is 640 wide; keep it in the middle on widescreen.
+		gump->setRelativePosition(Gump::CENTER);
 		return;
 	}
 
