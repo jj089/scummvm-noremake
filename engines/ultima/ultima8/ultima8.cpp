@@ -44,7 +44,16 @@
 #include "ultima/ultima8/gfx/cycle_process.h"
 #include "ultima/ultima8/gfx/fonts/font_manager.h"
 #include "ultima/ultima8/gfx/render_surface.h"
+#include "ultima/ultima8/gumps/weasel_gump.h"
+#include "ultima/ultima8/gumps/cru_credits_gump.h"
+#include "ultima/ultima8/gumps/cru_demo_gump.h"
+#include "ultima/ultima8/gumps/cru_keys_gump.h"
+#include "ultima/ultima8/gumps/cru_menu_gump.h"
+#include "ultima/ultima8/gumps/cru_options_gump.h"
 #include "ultima/ultima8/gumps/cru_save_gump.h"
+#include "ultima/ultima8/gumps/difficulty_gump.h"
+#include "ultima/ultima8/gumps/movie_gump.h"
+#include "ultima/ultima8/gumps/quit_gump.h"
 #include "ultima/ultima8/gumps/game_map_gump.h"
 #include "ultima/ultima8/gumps/inverter_gump.h"
 #include "ultima/ultima8/gumps/menu_gump.h"
@@ -134,7 +143,8 @@ Ultima8Engine::Ultima8Engine(OSystem *syst, const Ultima::UltimaGameDescription 
 		_showTouching(false), _hackMoverEnabled(false), _timeOffset(0),
 		_hasCheated(false), _cheatsEnabled(false),
 		_fontOverride(false), _fontAntialiasing(false), _audioMixer(0), _inverterGump(nullptr),
-		_lerpFactor(256), _inBetweenFrame(false), _crusaderTeleporting(false), _moveKeyFrame(0),
+		_lerpFactor(256), _controllerActive(false),
+		_inBetweenFrame(false), _crusaderTeleporting(false), _moveKeyFrame(0),
 		_highRes(false), _priorFrameCounterTime(0) {
 	_instance = this;
 }
@@ -886,6 +896,24 @@ void Ultima8Engine::handleEvent(const Common::Event &event) {
 	Common::Keymapper *const keymapper = _eventMan->getKeymapper();
 	keymapper->setEnabledKeymapType(modal ? Common::Keymap::kKeymapTypeGui : Common::Keymap::kKeymapTypeGame);
 
+	// Which device the player is using, for the on-screen button hints.
+	switch (event.type) {
+	case Common::EVENT_KEYDOWN:
+	case Common::EVENT_LBUTTONDOWN:
+	case Common::EVENT_RBUTTONDOWN:
+		_controllerActive = false;
+		break;
+	case Common::EVENT_JOYBUTTON_DOWN:
+		_controllerActive = true;
+		break;
+	case Common::EVENT_JOYAXIS_MOTION:
+		if (ABS(event.joystick.position) > Common::JOYAXIS_MAX / 2)
+			_controllerActive = true;
+		break;
+	default:
+		break;
+	}
+
 	switch (event.type) {
 	case Common::EVENT_KEYDOWN:
 		if (modal) {
@@ -928,6 +956,14 @@ void Ultima8Engine::handleEvent(const Common::Event &event) {
 			cruMover->onJoystickAxis(event.joystick.axis, event.joystick.position);
 		break;
 	}
+
+	// Only seen while a menu is open: in game the buttons are mapped to actions.
+	case Common::EVENT_JOYBUTTON_DOWN:
+	case Common::EVENT_JOYBUTTON_UP:
+		if (modal)
+			handleMenuPadButton(modal, (Common::JoystickButton)event.joystick.button,
+								event.type == Common::EVENT_JOYBUTTON_DOWN);
+		break;
 
 	case Common::EVENT_LBUTTONDOWN:
 	case Common::EVENT_MBUTTONDOWN:
@@ -973,6 +1009,67 @@ void Ultima8Engine::handleEvent(const Common::Event &event) {
 	default:
 		break;
 	}
+}
+
+void Ultima8Engine::handleMenuPadButton(Gump *modal, Common::JoystickButton button, bool down) {
+	// Screens driven by keys: A selects. Movies and credits: A skips.
+	// Anything else (keypads, shops, terminals): A clicks at the pointer,
+	// which the left stick moves (ScummVM's virtual mouse).
+	const bool keyScreen = dynamic_cast<CruMenuGump *>(modal) || dynamic_cast<CruSaveGump *>(modal) ||
+		dynamic_cast<CruOptionsGump *>(modal) || dynamic_cast<CruKeysGump *>(modal) ||
+		dynamic_cast<QuitGump *>(modal) || dynamic_cast<DifficultyGump *>(modal);
+	const bool skipScreen = dynamic_cast<MovieGump *>(modal) || dynamic_cast<CruCreditsGump *>(modal) ||
+		dynamic_cast<CruDemoGump *>(modal);
+
+	if (button == Common::JOYSTICK_BUTTON_A && !keyScreen && !skipScreen) {
+		if (down)
+			_mouse->buttonDown(Mouse::BUTTON_LEFT);
+		else
+			_mouse->buttonUp(Mouse::BUTTON_LEFT);
+		return;
+	}
+	if (!down)
+		return;
+
+	Common::KeyCode key = Common::KEYCODE_INVALID;
+	switch (button) {
+	case Common::JOYSTICK_BUTTON_A:
+		key = skipScreen ? Common::KEYCODE_ESCAPE : Common::KEYCODE_RETURN;
+		break;
+	case Common::JOYSTICK_BUTTON_B:
+	case Common::JOYSTICK_BUTTON_BACK:
+	case Common::JOYSTICK_BUTTON_START:
+		key = Common::KEYCODE_ESCAPE;
+		break;
+	case Common::JOYSTICK_BUTTON_X:
+		key = Common::KEYCODE_DELETE;
+		break;
+	case Common::JOYSTICK_BUTTON_DPAD_UP:
+		key = Common::KEYCODE_UP;
+		break;
+	case Common::JOYSTICK_BUTTON_DPAD_DOWN:
+		key = Common::KEYCODE_DOWN;
+		break;
+	case Common::JOYSTICK_BUTTON_DPAD_LEFT:
+		key = Common::KEYCODE_LEFT;
+		break;
+	case Common::JOYSTICK_BUTTON_DPAD_RIGHT:
+		key = Common::KEYCODE_RIGHT;
+		break;
+	case Common::JOYSTICK_BUTTON_LEFT_SHOULDER:
+		key = Common::KEYCODE_PAGEUP;
+		break;
+	case Common::JOYSTICK_BUTTON_RIGHT_SHOULDER:
+		key = Common::KEYCODE_PAGEDOWN;
+		break;
+	default:
+		return;
+	}
+	modal->OnKeyDown(key, 0);
+	// The key handler may have closed the screen; look it up again.
+	Gump *still = _desktopGump->FindGump<ModalGump>();
+	if (still)
+		still->OnKeyUp(key);
 }
 
 void Ultima8Engine::handleDelayedEvents() {

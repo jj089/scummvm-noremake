@@ -106,6 +106,8 @@ private:
 	// Various dependency flags
 	// Timing stuff
 	int32 _lerpFactor;       //!< Interpolation factor for this frame (0-256)
+
+	bool _controllerActive;  //!< last input came from a controller
 	bool _inBetweenFrame;    //!< Set true if we are doing an inbetween frame
 	uint32 _priorFrameCounterTime;
 
@@ -242,6 +244,12 @@ public:
 		return _avatarInStasis;
 	}
 	bool isAvatarControlled() const;
+
+	//! True when the player's last input was from a controller (for button hints)
+	bool isControllerActive() const {
+		return _controllerActive;
+	}
+	void handleMenuPadButton(Gump *modal, Common::JoystickButton button, bool down);
 	bool isShowEditorItems() const {
 		return _showEditorItems;
 	}

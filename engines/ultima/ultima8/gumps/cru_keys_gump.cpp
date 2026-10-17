@@ -201,7 +201,8 @@ void CruKeysGump::PaintThis(RenderSurface *surf, int32 lerp_factor, bool scaled)
 	}
 
 	const char *hint = _capturing >= 0 ? "PRESS THE NEW KEY OR BUTTON  -  ESC TO CANCEL"
-					 : "ENTER TO CHANGE  -  DELETE TO CLEAR";
+		: Ultima8Engine::get_instance()->isControllerActive() ? "A CHANGE  -  X CLEAR  -  B BACK"
+		: "ENTER TO CHANGE  -  DELETE TO CLEAR";
 	drawText(surf, FONT_TEXT, _message.empty() ? Common::String(hint) : _message,
 			 MARGIN, NAV_Y - 30, 0, Font::TEXT_LEFT, _message.empty() ? COL_DIM : 0);
 

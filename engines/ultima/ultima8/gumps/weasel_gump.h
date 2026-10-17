@@ -19,8 +19,8 @@
  *
  */
 
-#ifndef ULTIMA8_GUMPS_REMORSEMENUGUMP_H
-#define ULTIMA8_GUMPS_REMORSEMENUGUMP_H
+#ifndef ULTIMA8_GUMPS_WEASELGUMP_H
+#define ULTIMA8_GUMPS_WEASELGUMP_H
 
 #include "ultima/ultima8/gumps/modal_gump.h"
 #include "ultima/ultima8/misc/classtype.h"

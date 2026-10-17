@@ -147,10 +147,10 @@ void CruOptionsGump::PaintThis(RenderSurface *surf, int32 lerp_factor, bool scal
 
 	const int footY = PANEL_H - 34;
 	surf->drawLine32(COL_FRAME_DIM, LIST_X, footY - 10, PANEL_W - 24, footY - 10);
-	drawText(surf, FONT_TEXT, _restartNeeded ? "* CHANGES APPLY NEXT TIME THE GAME STARTS"
-						: "* APPLIES NEXT TIME THE GAME STARTS", LIST_X, footY, 0, Font::TEXT_LEFT,
+	drawText(surf, FONT_TEXT, "* APPLIES WHEN THE GAME RESTARTS", LIST_X, footY, 0, Font::TEXT_LEFT,
 			 _restartNeeded ? 0 : COL_DIM);
-	drawText(surf, FONT_TEXT, "ARROWS OR CLICK TO CHANGE", PANEL_W - 24 - 260, footY, 260,
+	drawText(surf, FONT_TEXT, Ultima8Engine::get_instance()->isControllerActive()
+			 ? "D-PAD CHANGE  A SELECT  B BACK" : "ARROWS OR CLICK TO CHANGE", PANEL_W - 24 - 260, footY, 260,
 			 Font::TEXT_RIGHT, COL_DIM);
 }
 

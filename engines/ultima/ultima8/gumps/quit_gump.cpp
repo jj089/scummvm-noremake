@@ -156,6 +156,10 @@ bool QuitGump::OnKeyDown(int key, int mod) {
 		Close();
 	}
 	break;
+	case Common::KEYCODE_RETURN:
+	case Common::KEYCODE_KP_ENTER:
+		Ultima8Engine::get_instance()->quitGame();
+		break;
 	default:
 		break;
 	}

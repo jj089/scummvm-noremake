@@ -143,6 +143,7 @@ static const struct {
 	{ "MOVE_RIGHT", { "d", "RIGHT", "JOY_RIGHT", "JOY_LEFT_STICK_X+" } },
 	{ "MOVE_RUN", { "LSHIFT", "JOY_LEFT_TRIGGER", nullptr, nullptr } },
 	{ "ATTACK", { "SPACE", "KP0", "JOY_RIGHT_TRIGGER", nullptr } },
+	{ "MENU", { "ESCAPE", "JOY_Y", "JOY_START", nullptr } },
 	{ "NEXT_WEAPON", { "q", "KP_MULTIPLY", nullptr, nullptr } },
 	{ "SELECT_ITEM", { "f", "KP_PLUS", nullptr, nullptr } },
 	{ nullptr, { nullptr, nullptr, nullptr, nullptr } }

@@ -198,7 +198,9 @@ void CruSaveGump::PaintThis(RenderSurface *surf, int32 lerp_factor, bool scaled)
 	surf->frameRect32(COL_FRAME_DIM, thumbRect);
 
 	const char *hint = _editor ? "TYPE A NAME  -  ENTER TO SAVE  -  ESC TO CANCEL"
-					 : (_save ? "CLICK A SLOT TO SAVE" : "CLICK A SAVE TO LOAD");
+		: Ultima8Engine::get_instance()->isControllerActive()
+			? (_save ? "A SAVE  -  B BACK  -  LB RB PAGE" : "A LOAD  -  B BACK  -  LB RB PAGE")
+			: (_save ? "CLICK A SLOT TO SAVE" : "CLICK A SAVE TO LOAD");
 	drawText(surf, FONT_TEXT, hint, INFO_X, NAV_Y - 54, THUMB_W, Font::TEXT_LEFT, COL_DIM);
 
 	// Navigation
@@ -278,6 +280,11 @@ void CruSaveGump::activate(int row) {
 	if (_save) {
 		if (slot == 0)
 			return; // reserved for autosaves
+		if (engine->isControllerActive()) {
+			// No keyboard to type a name: keep the old one, or number it.
+			saveNow(_slots[row].used ? _slots[row].description : Common::String::format("SAVE %02d", slot));
+			return;
+		}
 		startEdit(row);
 		return;
 	}
@@ -308,6 +315,23 @@ void CruSaveGump::stopEdit() {
 	_editor = nullptr;
 }
 
+void CruSaveGump::saveNow(const Common::String &name) {
+	const int slot = slotFor(_selected);
+	Ultima8Engine *engine = Ultima8Engine::get_instance();
+	// Close first, and hide the menu, so the save thumbnail shows the game.
+	Close(); // 'this' is gone after the next frame, don't use it below
+	Gump *menu = engine->getDesktopGump()->FindGump<CruMenuGump>();
+	if (menu)
+		menu->HideGump();
+	Common::Error err = engine->saveGameState(slot, name);
+	if (menu)
+		menu->UnhideGump();
+	if (err.getCode() != Common::kNoError) {
+		GUI::MessageDialog errorDialog(err.getDesc());
+		errorDialog.runModal();
+	}
+}
+
 void CruSaveGump::ChildNotify(Gump *child, uint32 message) {
 	if (child != _editor)
 		return;
@@ -317,20 +341,7 @@ void CruSaveGump::ChildNotify(Gump *child, uint32 message) {
 		name.trim();
 		if (name.empty())
 			return;
-		const int slot = slotFor(_selected);
-		Ultima8Engine *engine = Ultima8Engine::get_instance();
-		// Close first, and hide the menu, so the save thumbnail shows the game.
-		Close(); // 'this' is gone after the next frame, don't use it below
-		Gump *menu = engine->getDesktopGump()->FindGump<CruMenuGump>();
-		if (menu)
-			menu->HideGump();
-		Common::Error err = engine->saveGameState(slot, name);
-		if (menu)
-			menu->UnhideGump();
-		if (err.getCode() != Common::kNoError) {
-			GUI::MessageDialog errorDialog(err.getDesc());
-			errorDialog.runModal();
-		}
+		saveNow(name); // closes us
 	} else if (message == EditWidget::EDIT_ESCAPE) {
 		stopEdit();
 	}

@@ -88,6 +88,7 @@ private:
 	void activate(int row);
 	void startEdit(int row);
 	void stopEdit();
+	void saveNow(const Common::String &name);
 	void changePage(int delta);
 };
 

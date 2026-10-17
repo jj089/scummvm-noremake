@@ -197,6 +197,42 @@ void AutoTest::execute(const Common::String &line) {
 			const char lower = (c >= 'A' && c <= 'Z') ? c - 'A' + 'a' : c;
 			pushKey(static_cast<Common::KeyCode>(lower), c);
 		}
+	} else if (cmd == "pad") {
+		// Press and release a controller button.
+		static const struct {
+			const char *name;
+			Common::JoystickButton button;
+		} PAD_BUTTONS[] = {
+			{ "A", Common::JOYSTICK_BUTTON_A }, { "B", Common::JOYSTICK_BUTTON_B },
+			{ "X", Common::JOYSTICK_BUTTON_X }, { "Y", Common::JOYSTICK_BUTTON_Y },
+			{ "START", Common::JOYSTICK_BUTTON_START }, { "UP", Common::JOYSTICK_BUTTON_DPAD_UP },
+			{ "DOWN", Common::JOYSTICK_BUTTON_DPAD_DOWN }, { "LEFT", Common::JOYSTICK_BUTTON_DPAD_LEFT },
+			{ "RIGHT", Common::JOYSTICK_BUTTON_DPAD_RIGHT }, { "LB", Common::JOYSTICK_BUTTON_LEFT_SHOULDER },
+			{ "RB", Common::JOYSTICK_BUTTON_RIGHT_SHOULDER },
+		};
+		const Common::String name = tok.nextToken();
+		for (const auto &b : PAD_BUTTONS) {
+			if (name == b.name) {
+				Common::Event ev;
+				ev.type = Common::EVENT_JOYBUTTON_DOWN;
+				ev.joystick.button = b.button;
+				g_system->getEventManager()->pushEvent(ev);
+				ev.type = Common::EVENT_JOYBUTTON_UP;
+				g_system->getEventManager()->pushEvent(ev);
+				return;
+			}
+		}
+		warning("autotest: unknown pad button %s", name.c_str());
+	} else if (cmd == "lstick") {
+		// Hold the left analog stick (-32768..32767 per axis).
+		Common::Event ev;
+		ev.type = Common::EVENT_JOYAXIS_MOTION;
+		ev.joystick.axis = Common::JOYSTICK_AXIS_LEFT_STICK_X;
+		ev.joystick.position = atoi(tok.nextToken().c_str());
+		g_system->getEventManager()->pushEvent(ev);
+		ev.joystick.axis = Common::JOYSTICK_AXIS_LEFT_STICK_Y;
+		ev.joystick.position = atoi(tok.nextToken().c_str());
+		g_system->getEventManager()->pushEvent(ev);
 	} else if (cmd == "rstick") {
 		// Simulate the right analog stick (-32768..32767 per axis).
 		Common::Event ev;

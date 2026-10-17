@@ -48,7 +48,7 @@ static const int MENU_MUSIC_REMORSE = 20;
 static const int MENU_MUSIC_REGRET = 18;
 
 CruMenuGump::CruMenuGump()
-	: ModalGump(0, 0, 640, 480, 0, FLAG_DONT_SAVE) {
+	: ModalGump(0, 0, 640, 480, 0, FLAG_DONT_SAVE), _focusEntry(0) {
 
 	Mouse *mouse = Mouse::get_instance();
 	mouse->pushMouseCursor(Mouse::MOUSE_HAND);
@@ -181,9 +181,32 @@ bool CruMenuGump::OnKeyDown(int key, int mod) {
 			Close(); // don't allow closing if dead/game over
 	} else if (key >= Common::KEYCODE_1 && key <= Common::KEYCODE_6) {
 		selectEntry(key - Common::KEYCODE_1 + 1);
+	} else if (key == Common::KEYCODE_DOWN || key == Common::KEYCODE_RIGHT) {
+		focusEntry(_focusEntry % NUM_MENU_ENTRIES + 1);
+	} else if (key == Common::KEYCODE_UP || key == Common::KEYCODE_LEFT) {
+		focusEntry(_focusEntry <= 1 ? NUM_MENU_ENTRIES : _focusEntry - 1);
+	} else if ((key == Common::KEYCODE_RETURN || key == Common::KEYCODE_KP_ENTER) && _focusEntry) {
+		selectEntry(_focusEntry);
 	}
 
 	return true;
+}
+
+void CruMenuGump::focusEntry(int entry) {
+	// Move the pointer onto the entry: its button lights up as if hovered.
+	for (Gump *g : _children) {
+		ButtonWidget *button = dynamic_cast<ButtonWidget *>(g);
+		if (!button || button->GetIndex() != entry)
+			continue;
+		const Common::Rect32 &dims = button->getDims();
+		int32 x = dims.left + dims.width() / 2, y = dims.top + dims.height() / 2;
+		button->GumpToScreenSpace(x, y);
+		Mouse::get_instance()->setMouseCoords(x, y);
+		const int scale = Ultima8Engine::get_instance()->getRenderScale();
+		g_system->warpMouse(x * scale, y * scale);
+		_focusEntry = entry;
+		return;
+	}
 }
 
 void CruMenuGump::ChildNotify(Gump *child, uint32 message) {

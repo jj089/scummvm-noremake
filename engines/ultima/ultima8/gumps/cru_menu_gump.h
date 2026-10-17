@@ -52,6 +52,10 @@ public:
 protected:
 
 	virtual void selectEntry(int entry);
+
+	//! Keyboard / controller focus: entry 1-6, 0 for none
+	int _focusEntry;
+	void focusEntry(int entry);
 };
 
 } // End of namespace Ultima8
