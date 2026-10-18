@@ -326,6 +326,13 @@ void AutoTest::execute(const Common::String &line) {
 		delete stream;
 	} else if (cmd == "movie") {
 		MovieGump::CruMovieViewer(tok.nextToken(), 640, 480, nullptr, nullptr, 0);
+	} else if (cmd == "teleport") {
+		// teleport <map> <egg>: jump to a teleport egg (for screenshots of other levels)
+		MainActor *av = getMainActor();
+		const int map = atoi(tok.nextToken().c_str());
+		const int egg = atoi(tok.nextToken().c_str());
+		if (av)
+			av->teleport(map, egg);
 	} else if (cmd == "god") {
 		MainActor *av = getMainActor();
 		if (av)
