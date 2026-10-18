@@ -110,6 +110,9 @@
 
 #define GAME_FRAME_TIME 50
 
+// Set once the ScummVM logo splash has been shown (engines/engine.cpp).
+extern bool splash;
+
 namespace Ultima {
 namespace Ultima8 {
 
@@ -589,6 +592,11 @@ Common::Error Ultima8Engine::startupGame() {
 	// replacement art where available (hdshapes/ in the game directory).
 	if (GAME_IS_CRUSADER && ConfMan.hasKey("hd_scale"))
 		_renderScale = CLIP(ConfMan.getInt("hd_scale"), 1, 4);
+
+	// The Crusader builds present as the game itself: no ScummVM logo splash
+	// when the screen is first set up (engines/engine.cpp's splash flag).
+	if (GAME_IS_CRUSADER)
+		::splash = true;
 
 	int width = ConfMan.getInt("width");
 	int height = ConfMan.getInt("height");

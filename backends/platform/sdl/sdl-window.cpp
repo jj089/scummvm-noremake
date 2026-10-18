@@ -38,7 +38,7 @@ static const uint32 fullscreenMask = SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_
 
 SdlWindow::SdlWindow() :
 #if SDL_VERSION_ATLEAST(2, 0, 0)
-	_window(nullptr), _windowCaption("ScummVM"),
+	_window(nullptr), _windowCaption("Crusader"),
 	_lastFlags(0), _lastX(SDL_WINDOWPOS_UNDEFINED), _lastY(SDL_WINDOWPOS_UNDEFINED),
 #endif
 	_inputGrabState(false), _inputLockState(false),

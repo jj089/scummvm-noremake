@@ -853,7 +853,7 @@ void OSystem_SDL::messageBox(LogMessageType::Type type, const char *message) {
 		break;
 	}
 
-	SDL_ShowSimpleMessageBox(flags, "ScummVM", message, _window ? _window->getSDLWindow() : nullptr);
+	SDL_ShowSimpleMessageBox(flags, "Crusader", message, _window ? _window->getSDLWindow() : nullptr);
 }
 #endif
 

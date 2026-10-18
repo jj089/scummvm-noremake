@@ -387,8 +387,10 @@ static void setupGraphics(OSystem &system) {
 
 	system.applyBackendSettings();
 
-	// Set initial window caption
-	system.setWindowCaption(Common::U32String(gScummVMFullVersion));
+	// Set initial window caption: the game's name when one was named on the
+	// command line (so no "ScummVM" title flashes up before it starts).
+	const Common::String desc = ConfMan.getActiveDomainName().empty() ? Common::String() : ConfMan.get("description");
+	system.setWindowCaption(desc.empty() ? Common::U32String(gScummVMFullVersion) : desc.decode());
 
 	// Clear the main screen
 	system.fillScreen(0);
