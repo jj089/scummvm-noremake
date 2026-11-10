@@ -1,0 +1,70 @@
+# Baut den No-Reprieve-Fork (ScummVM, nur Crusader-Engine) automatisch für Windows.
+# Ergebnis: unter "Actions" → letzter Lauf → "Artifacts" → NoReprieve-Windows (ZIP).
+name: No Reprieve – Windows-Build
+
+on:
+  push:
+    branches: [noreprieve]
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Werkzeuge installieren (MSYS2, UCRT64)
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            make
+            mingw-w64-ucrt-x86_64-toolchain
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-SDL2
+            mingw-w64-ucrt-x86_64-freetype
+            mingw-w64-ucrt-x86_64-libpng
+            mingw-w64-ucrt-x86_64-libjpeg-turbo
+            mingw-w64-ucrt-x86_64-libogg
+            mingw-w64-ucrt-x86_64-libvorbis
+            mingw-w64-ucrt-x86_64-libtheora
+            mingw-w64-ucrt-x86_64-flac
+            mingw-w64-ucrt-x86_64-libmad
+            mingw-w64-ucrt-x86_64-fribidi
+            mingw-w64-ucrt-x86_64-zlib
+
+      - name: Konfigurieren (nur die Crusader-Engine)
+        run: ./configure --disable-all-engines --enable-engine=ultima8 --enable-release --disable-debug
+
+      - name: Bauen
+        run: make -j$(nproc)
+
+      - name: Spielordner zusammenstellen
+        run: |
+          mkdir -p NoReprieve
+          strip -o NoReprieve/scummvm.exe scummvm.exe
+          for dll in $(ldd scummvm.exe | grep -i ucrt64 | awk '{print $3}'); do cp -u "$dll" NoReprieve/; done
+          cp dists/engine-data/ultima8.dat NoReprieve/ 2>/dev/null || true
+          cp gui/themes/*.zip NoReprieve/ 2>/dev/null || true
+          cat > NoReprieve/ANLEITUNG.txt <<'TXT'
+          CRUSADER: NO REPRIEVE – Test-Build
+
+          1. Crusader: No Remorse (und/oder No Regret) bei GOG installieren.
+          2. Diesen Ordner irgendwo entpacken und scummvm.exe starten.
+          3. "Spiel hinzufügen" anklicken und den GOG-Installationsordner des Spiels wählen.
+          4. Starten. Moderne Steuerung, Breitbild und HD-Optionen findest du im Optionsmenü des Spiels.
+
+          Es sind keine Spieldaten enthalten. Crusader gehört Electronic Arts.
+          Code: GNU GPL v3 (ScummVM und Crusader-Modern-Patches).
+          TXT
+
+      - name: Als ZIP bereitstellen
+        uses: actions/upload-artifact@v4
+        with:
+          name: NoReprieve-Windows
+          path: NoReprieve
+          retention-days: 30
